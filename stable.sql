@@ -25,5 +25,18 @@ CREATE TABLE IF NOT EXISTS `horses` (
   `stable` varchar(50) DEFAULT NULL,
   `born_date` int(11) NOT NULL DEFAULT 0,
   `last_age_update` int(11) NOT NULL DEFAULT 0,
+  `is_fertile` int(11) NOT NULL DEFAULT 1,
+  `breed_count` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+);
+
+CREATE TABLE IF NOT EXISTS `horse_transfers` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `horse_id` int(11) NOT NULL,
+  `from_cid` varchar(50) NOT NULL,
+  `to_cid` varchar(50) NOT NULL,
+  `price` int(11) NOT NULL DEFAULT 0,
+  `status` enum('pending','accepted','declined','cancelled') NOT NULL DEFAULT 'pending',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`)
 );
