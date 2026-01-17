@@ -231,3 +231,10 @@ CreateThread(function()
     Wait(1000)
     CreateDatabaseIfNotExists()
 end)
+
+-- Callback for external scripts (rex-horsetrainer)
+RSGCore.Functions.CreateCallback('rsg-horses:server:GetActiveHorse', function(source, cb)
+    -- Stub return for compatibility. 
+    -- devchacha-stable doesn't currently track XP, so we return 0.
+    cb({ horsexp = 0 })
+end)

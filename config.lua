@@ -3,66 +3,54 @@ Config = {}
 Config.MaxNumberOfHorses = 3
 
 Config.Stables = {
-	Valentine = {
-		Pos = vector3(-367.73, 787.72, 116.26),
-		Name = 'Stable Valentine',
-        	Heading = -30.65,
-		SpawnPoint = {
-			Pos = vector3(-372.43, 791.79, 116.13),
-			CamPos = {x=1, y=-3, z=0},
-			Heading = 182.3
-        }
+    valentine = {
+        Pos = vector3(-365.87, 789.51, 116.17), -- Using EnterStable as main Pos
+        Name = "Stable of Valentine",
+        StableNPC = { x = -365.15, y = 792.68, z = 115.18, h = 178.47, model = "u_m_m_bwmstablehand_01" },
+        SpawnHorse = { x = -366.07, y = 781.81, z = 115.14, h = 5.97 },
+        CamHorse = { x = -367.9267, y = 783.0237, z = 117.7778, rx = -36.42624, ry = 0.0, rz = -100.9786 },
+        CamHorseGear = { x = -367.9267, y = 783.0237, z = 117.7778, rx = -36.42624, ry = 0.0, rz = -100.9786 }
     },
-	Blackwater = {
-		Pos = vector3(-864.84, -1365.96, 43.54),
-		Name = 'Stable Blackwater',
-        	Heading = -30.65,
-		SpawnPoint = {
-			Pos = vector3(-867.74, -1361.69, 43.66),
-			CamPos = {x=1, y=-3, z=0},
-			Heading = 178.59
-        }
+    rhodes = {
+        Pos = vector3(1432.97, -1295.39, 76.82),
+        Name = "Stable of Rhodes",
+        StableNPC = { x = 1434.64, y = -1294.89, z = 76.82, h = 105.08, model = "u_m_m_bwmstablehand_01" },
+        SpawnHorse = { x = 1431.56, y = -1288.21, z = 76.82, h = 87.28 },
+        CamHorse = { x = 1431.58, y = -1292.27, z = 79.0, rx = -16.0, ry = 0.0, rz = 6.0 },
+        CamHorseGear = { x = 1431.58, y = -1292.27, z = 79.0, rx = -16.0, ry = 0.0, rz = 6.0 }
     },
-	SaintDenis = {
-		Pos = vector3(2503.13, -1449.08, 46.3),
-		Name = 'Stable Saint Denis',
-        	Heading = -30.65,
-		SpawnPoint = {
-			Pos = vector3(2508.41, -1446.89, 46.4),
-			CamPos = {x=1, y=-3, z=0},
-			Heading = 87.88
-        }		
-	},
-	Annesburg = {
-		Pos = vector3(2972.35, 1425.35, 44.67),
-		Name = 'Stable Annesburg',
-        	Heading = -30.65,
-		SpawnPoint = {
-			Pos = vector3(2970.43, 1429.35, 44.7),
-			CamPos = {x=1, y=-3, z=0},
-			Heading = 223.94
-        }		
-	},
-	Rhodes = {
-		Pos = vector3(1321.46, -1358.66, 78.39),
-		Name = 'Stable Rhodes',
-        	Heading = -30.65,
-		SpawnPoint = {
-			Pos = vector3(1318.74, -1354.64, 78.18),
-			CamPos = {x=1, y=-3, z=0},
-			Heading = 249.45
-        }		
-	},
-	Tumbleweed = {
-		Pos = vector3(-5519.43, -3043.45, -2.39),
-		Name = 'Stable Tumbleweed',
-        	Heading = 0.0,
-		SpawnPoint = {
-			Pos = vector3(-5522.14, -3039.16, -2.29),
-			CamPos = {x=1, y=-3, z=0},
-			Heading = 189.93
-        }		
-	},		
+    saintdenis = {
+        Pos = vector3(2510.58, -1456.83, 46.31),
+        Name = "Saint Denis Stable",
+        StableNPC = { x = 2512.35, y = -1456.89, z = 45.2, h = 91.68, model = "u_m_m_bwmstablehand_01" },
+        SpawnHorse = { x = 2508.59, y = -1449.96, z = 45.5, h = 90.09 },
+        CamHorse = { x = 2506.807, y = -1452.29, z = 48.61699, rx = -34.77003, ry = 0.0, rz = -35.20742 },
+        CamHorseGear = { x = 2508.876, y = -1451.953, z = 48.67999, rx = -35.29771, ry = 0.0, rz = -0.4993192 }
+    },
+    strawberry = {
+        Pos = vector3(-1816.81, -561.99, 156.07),
+        Name = "Strawberry Stable",
+        StableNPC = { x = -1818.45, y = -564.83, z = 155.06, h = 347.22, model = "u_m_m_bwmstablehand_01" },
+        SpawnHorse = { x = -1820.26, y = -555.84, z = 155.16, h = 163.01 },
+        CamHorse = { x = -1819.512, y = -558.6999, z = 157.6765, rx = -23.95241, ry = 0.0, rz = 28.46066 },
+        CamHorseGear = { x = -1819.512, y = -558.6999, z = 157.6765, rx = -23.95241, ry = 0.0, rz = 28.46066 }
+    },
+    blackwater = {
+        Pos = vector3(-876.57, -1365.1, 43.53),
+        Name = "Blackwater Stable",
+        StableNPC = { x = -878.35, y = -1364.81, z = 42.53, h = 266.28, model = "u_m_m_bwmstablehand_01" },
+        SpawnHorse = { x = -864.25, y = -1361.8, z = 42.7, h = 177.48 },
+        CamHorse = { x = -862.6163, y = -1362.927, z = 45.58158, rx = -40.96593, ry = 0.0, rz = 71.8129 },
+        CamHorseGear = { x = -862.6163, y = -1362.927, z = 45.58158, rx = -40.96593, ry = 0.0, rz = 71.8129 }
+    },
+    tumbleweed = {
+        Pos = vector3(-5514.24, -3041.81, -2.39),
+        Name = "Tumbleweed Stable",
+        StableNPC = { x = -5515.07, y = -3039.51, z = -3.39, h = 179.88, model = "u_m_m_bwmstablehand_01" },
+        SpawnHorse = { x = -5519.47, y = -3039.32, z = -3.31, h = 181.62 },
+        CamHorse = { x = -5517.651, y = -3041.113, z = -0.50949, rx = -33.14523, ry = 0.0, rz = 55.47822 },
+        CamHorseGear = { x = -5517.651, y = -3041.113, z = -0.50949, rx = -33.14523, ry = 0.0, rz = 55.47822 }
+    }
 }
 
 Config.Horses = {
