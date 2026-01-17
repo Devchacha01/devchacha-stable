@@ -1,5 +1,5 @@
+-- RSGCore Stable Client
 -- Variables
-
 
 cam = nil
 hided = false
@@ -79,14 +79,13 @@ end
 
 local function createCamera(entity)
     groundCam = CreateCam("DEFAULT_SCRIPTED_CAMERA")
-    SetCamCoord(groundCam, StablePoint[1] + 0.5, StablePoint[2] - 3.6, StablePoint[3] )
+    SetCamCoord(groundCam, StablePoint[1] + 0.5, StablePoint[2] - 3.6, StablePoint[3])
     SetCamRot(groundCam, -20.0, 0.0, HeadingPoint + 20)
     SetCamActive(groundCam, true)
     RenderScriptCams(true, false, 1, true, true)
-    --Wait(3000)
-    -- last camera, create interpolate
+    
     fixedCam = CreateCam("DEFAULT_SCRIPTED_CAMERA")
-    SetCamCoord(fixedCam, StablePoint[1] + 0.5, StablePoint[2] - 3.6, StablePoint[3] +1.8)
+    SetCamCoord(fixedCam, StablePoint[1] + 0.5, StablePoint[2] - 3.6, StablePoint[3] + 1.8)
     SetCamRot(fixedCam, -20.0, 0, HeadingPoint + 50.0)
     SetCamActive(fixedCam, true)
     SetCamActiveWithInterp(fixedCam, groundCam, 3900, true, true)
@@ -123,22 +122,18 @@ local function OpenStable()
     else
         createCamera(PlayerPedId())
     end
-    --  SetEntityVisible(PlayerPedId(), false)
+    
     if not alreadySentShopData then
-        SendNUIMessage(
-            {
-                action = "show",
-                shopData = getShopData()
-            }
-        )
+        SendNUIMessage({
+            action = "show",
+            shopData = getShopData()
+        })
     else
-        SendNUIMessage(
-            {
-                action = "show"
-            }
-        )
+        SendNUIMessage({
+            action = "show"
+        })
     end
-    TriggerServerEvent("qbr-stable:AskForMyHorses")
+    TriggerServerEvent("rsg-stable:AskForMyHorses")
 end
 
 local function rotation(dir)
@@ -149,62 +144,50 @@ end
 
 local function SetHorseName(data)
     SetNuiFocus(false, false)
-    SendNUIMessage(
-        {
-            action = "hide"
-        }
-    )
+    SendNUIMessage({
+        action = "hide"
+    })
     Wait(200)
     local HorseName = ""
 
-	CreateThread(function()
-		AddTextEntry('FMMC_MPM_NA', Lang:t('stable.set_name'))
-		DisplayOnscreenKeyboard(1, "FMMC_MPM_NA", "", "", "", "", "", 30)
-		while (UpdateOnscreenKeyboard() == 0) do
-			DisableAllControlActions(0);
-			Wait(0);
-		end
-		if (GetOnscreenKeyboardResult()) then
+    CreateThread(function()
+        AddTextEntry('FMMC_MPM_NA', Lang:t('stable.set_name'))
+        DisplayOnscreenKeyboard(1, "FMMC_MPM_NA", "", "", "", "", "", 30)
+        while (UpdateOnscreenKeyboard() == 0) do
+            DisableAllControlActions(0)
+            Wait(0)
+        end
+        if (GetOnscreenKeyboardResult()) then
             HorseName = GetOnscreenKeyboardResult()
-			TriggerServerEvent('qbr-stable:BuyHorse', data, HorseName)
-			Wait(1500)
-			SendNUIMessage(
-				{
-					action = "show",
-					shopData = getShopData()
-				}
-			)
+            TriggerServerEvent('rsg-stable:BuyHorse', data, HorseName)
+            Wait(1500)
+            SendNUIMessage({
+                action = "show",
+                shopData = getShopData()
+            })
             
             SetNuiFocus(true, true)
-			Wait(200)
-			TriggerServerEvent("qbr-stable:AskForMyHorses")
-		end
+            Wait(200)
+            TriggerServerEvent("rsg-stable:AskForMyHorses")
+        end
     end)
 end
 
 local function CloseStable()
-	local dados = {
-		-- ['saddles'] = SaddlesUsing,
-		-- ['saddlescloths'] = SaddleclothsUsing,
-		-- ['stirrups'] = StirrupsUsing,
-		-- ['bags'] = BagsUsing,
-		-- ['manes'] = ManesUsing,
-		-- ['horsetails'] = HorseTailsUsing,
-		-- ['acshorn'] = AcsHornUsing,
-		-- ['ascluggage'] = AcsLuggageUsing
-		SaddlesUsing,
-		SaddleclothsUsing,
-		StirrupsUsing,
-		BagsUsing,
-		ManesUsing,
-		HorseTailsUsing,
-		AcsHornUsing,
-		AcsLuggageUsing
-	}
-	local DadosEncoded = json.encode(dados)
-	if DadosEncoded ~= "{}" then
-		TriggerServerEvent("qbr-stable:UpdateHorseComponents", dados, IdMyHorse, MyHorse_entity )
-	end
+    local dados = {
+        SaddlesUsing,
+        SaddleclothsUsing,
+        StirrupsUsing,
+        BagsUsing,
+        ManesUsing,
+        HorseTailsUsing,
+        AcsHornUsing,
+        AcsLuggageUsing
+    }
+    local DadosEncoded = json.encode(dados)
+    if DadosEncoded ~= "{}" then
+        TriggerServerEvent("rsg-stable:UpdateHorseComponents", dados, IdMyHorse, MyHorse_entity)
+    end
 end
 
 local function InitiateHorse(atCoords)
@@ -215,7 +198,7 @@ local function InitiateHorse(atCoords)
     initializing = true
 
     if horseModel == nil and horseName == nil then
-        TriggerServerEvent("VP:HORSE:RequestMyHorseInfo")
+        TriggerServerEvent("rsg-stable:RequestMyHorseInfo")
 
         local timeoutatgametimer = GetGameTimer() + (3 * 1000)
 
@@ -224,9 +207,8 @@ local function InitiateHorse(atCoords)
         end
 
         if horseModel == nil and horseName == nil then
-            --horseModel = "A_C_Horse_MP_Mangy_Backup"
-            --horseName = "Pangaré"
-            --horseComponents = nil
+            initializing = false
+            return
         end
     end
 
@@ -305,10 +287,9 @@ local function InitiateHorse(atCoords)
     Citizen.InvokeNative(0x283978A15512B2FE, entity, true)
     SpawnplayerHorse = entity
     Citizen.InvokeNative(0x283978A15512B2FE, entity, true)
-    -- SetVehicleHasBeenOwnedByPlayer(playerHorse, true)
     SetPedNameDebug(entity, horseName)
     SetPedPromptName(entity, horseName)
-    --CreatePrompts(PromptGetGroupIdForTargetEntity(entity))
+    
     if horseComponents ~= nil and horseComponents ~= "0" then
         for _, componentHash in pairs(json.decode(horseComponents)) do
             NativeSetPedComponentEnabled(entity, tonumber(componentHash))
@@ -316,8 +297,8 @@ local function InitiateHorse(atCoords)
     end
 
     if horseModel == "A_C_Horse_MP_Mangy_Backup" then
-        NativeSetPedComponentEnabled(entity, 0x106961A8) --sela
-        NativeSetPedComponentEnabled(entity, 0x508B80B9) --blanket
+        NativeSetPedComponentEnabled(entity, 0x106961A8) -- saddle
+        NativeSetPedComponentEnabled(entity, 0x508B80B9) -- blanket
     end
 
     TaskGoToEntity(entity, ped, -1, 7.2, 2.0, 0, 0)
@@ -340,7 +321,7 @@ local function WhistleHorse()
             end
         end
     else
-        TriggerServerEvent('qbr-stable:CheckSelectedHorse')
+        TriggerServerEvent('rsg-stable:CheckSelectedHorse')
         Wait(100)
         InitiateHorse()
     end
@@ -357,7 +338,7 @@ end
 local function createCam(creatorType)
     for k, v in pairs(cams) do
         if cams[k].type == creatorType then
-            cam = CreateCamWithParams("DEFAULT_SCRIPTED_CAMERA", cams[k].x, cams[k].y, cams[k].z, cams[k].rx, cams[k].ry, cams[k].rz, cams[k].fov, false, 0) -- CAMERA COORDS
+            cam = CreateCamWithParams("DEFAULT_SCRIPTED_CAMERA", cams[k].x, cams[k].y, cams[k].z, cams[k].rx, cams[k].ry, cams[k].rz, cams[k].fov, false, 0)
             SetCamActive(cam, true)
             RenderScriptCams(true, false, 3000, true, false)
             createPeds()
@@ -380,450 +361,433 @@ local function interpCamera(cameraName, entity)
     end
 end
 
---NUI Callbacks
+-- NUI Callbacks
 
 RegisterNUICallback("rotate", function(data, cb)
-	if (data["key"] == "left") then
-		rotation(20)
-	else
-		rotation(-20)
-	end
-	cb("ok")
+    if (data["key"] == "left") then
+        rotation(20)
+    else
+        rotation(-20)
+    end
+    cb("ok")
 end)
 
 RegisterNUICallback("Saddles", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		SaddlesUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xBAA7E618, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. saddles[num])
-		setcloth(hash)
-		SaddlesUsing = ("0x" .. saddles[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        SaddlesUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xBAA7E618, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. saddles[num])
+        setcloth(hash)
+        SaddlesUsing = ("0x" .. saddles[num])
+    end
 end)
 
 RegisterNUICallback("Saddlecloths", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		SaddleclothsUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x17CEB41A, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. saddlecloths[num])
-		setcloth(hash)
-		SaddleclothsUsing = ("0x" .. saddlecloths[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        SaddleclothsUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x17CEB41A, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. saddlecloths[num])
+        setcloth(hash)
+        SaddleclothsUsing = ("0x" .. saddlecloths[num])
+    end
 end)
 
 RegisterNUICallback("Stirrups", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		StirrupsUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xDA6DADCA, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. stirrups[num])
-		setcloth(hash)
-		StirrupsUsing = ("0x" .. stirrups[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        StirrupsUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xDA6DADCA, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. stirrups[num])
+        setcloth(hash)
+        StirrupsUsing = ("0x" .. stirrups[num])
+    end
 end)
 
 RegisterNUICallback("Bags", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		BagsUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x80451C25, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. bags[num])
-		setcloth(hash)
-		BagsUsing = ("0x" .. bags[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        BagsUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x80451C25, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. bags[num])
+        setcloth(hash)
+        BagsUsing = ("0x" .. bags[num])
+    end
 end)
 
 RegisterNUICallback("Manes", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		ManesUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xAA0217AB, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. manes[num])
-		setcloth(hash)
-		ManesUsing = ("0x" .. manes[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        ManesUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xAA0217AB, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. manes[num])
+        setcloth(hash)
+        ManesUsing = ("0x" .. manes[num])
+    end
 end)
 
 RegisterNUICallback("HorseTails", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		HorseTailsUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x17CEB41A, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. horsetails[num])
-		setcloth(hash)
-		HorseTailsUsing = ("0x" .. horsetails[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        HorseTailsUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x17CEB41A, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. horsetails[num])
+        setcloth(hash)
+        HorseTailsUsing = ("0x" .. horsetails[num])
+    end
 end)
 
 RegisterNUICallback("AcsHorn", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		AcsHornUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x5447332, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. acshorn[num])
-		setcloth(hash)
-		AcsHornUsing = ("0x" .. acshorn[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        AcsHornUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0x5447332, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. acshorn[num])
+        setcloth(hash)
+        AcsHornUsing = ("0x" .. acshorn[num])
+    end
 end)
 
 RegisterNUICallback("AcsLuggage", function(data)
-	zoom = 4.0
-	offset = 0.2
-	if tonumber(data.id) == 0 then
-		num = 0
-		AcsLuggageUsing = num
-		local playerHorse = MyHorse_entity
-		Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xEFB31921, 0) -- HAT REMOVE
-		Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0) -- Actually remove the component
-	else
-		local num = tonumber(data.id)
-		hash = ("0x" .. acsluggage[num])
-		setcloth(hash)
-		AcsLuggageUsing = ("0x" .. acsluggage[num])
-	end
+    zoom = 4.0
+    offset = 0.2
+    if tonumber(data.id) == 0 then
+        num = 0
+        AcsLuggageUsing = num
+        local playerHorse = MyHorse_entity
+        Citizen.InvokeNative(0xD710A5007C2AC539, playerHorse, 0xEFB31921, 0)
+        Citizen.InvokeNative(0xCC8CA3E88256E58F, playerHorse, 0, 1, 1, 1, 0)
+    else
+        local num = tonumber(data.id)
+        hash = ("0x" .. acsluggage[num])
+        setcloth(hash)
+        AcsLuggageUsing = ("0x" .. acsluggage[num])
+    end
 end)
 
 RegisterNUICallback("selectHorse", function(data)
-	TriggerServerEvent("qbr-stable:SelectHorseWithId", tonumber(data.horseID))
+    TriggerServerEvent("rsg-stable:SelectHorseWithId", tonumber(data.horseID))
 end)
 
 RegisterNUICallback("sellHorse", function(data)
-	DeleteEntity(showroomHorse_entity)
-	TriggerServerEvent("qbr-stable:SellHorseWithId", tonumber(data.horseID))
-	TriggerServerEvent("qbr-stable:AskForMyHorses")
-	alreadySentShopData = false
-	Wait(300)
+    DeleteEntity(showroomHorse_entity)
+    TriggerServerEvent("rsg-stable:SellHorseWithId", tonumber(data.horseID))
+    TriggerServerEvent("rsg-stable:AskForMyHorses")
+    alreadySentShopData = false
+    Wait(300)
 
-	SendNUIMessage(
-		{
-			action = "show",
-			shopData = getShopData()
-		}
-	)
-	TriggerServerEvent("qbr-stable:AskForMyHorses")
-
+    SendNUIMessage({
+        action = "show",
+        shopData = getShopData()
+    })
+    TriggerServerEvent("rsg-stable:AskForMyHorses")
 end)
 
 RegisterNUICallback("loadHorse", function(data)
-	local horseModel = data.horseModel
+    local horseModel = data.horseModel
 
-	if showroomHorse_model == horseModel then
-		return
-	end
+    if showroomHorse_model == horseModel then
+        return
+    end
 
-	if MyHorse_entity ~= nil then
-		DeleteEntity(MyHorse_entity)
-		MyHorse_entity = nil
-	end
+    if MyHorse_entity ~= nil then
+        DeleteEntity(MyHorse_entity)
+        MyHorse_entity = nil
+    end
 
-	local modelHash = GetHashKey(horseModel)
+    local modelHash = GetHashKey(horseModel)
 
-	if IsModelValid(modelHash) then
-		if not HasModelLoaded(modelHash) then
-			RequestModel(modelHash)
-			while not HasModelLoaded(modelHash) do
-				Wait(10)
-			end
-		end
-	end
+    if IsModelValid(modelHash) then
+        if not HasModelLoaded(modelHash) then
+            RequestModel(modelHash)
+            while not HasModelLoaded(modelHash) do
+                Wait(10)
+            end
+        end
+    end
 
-	if showroomHorse_entity ~= nil then
-		DeleteEntity(showroomHorse_entity)
-		showroomHorse_entity = nil
-	end
+    if showroomHorse_entity ~= nil then
+        DeleteEntity(showroomHorse_entity)
+        showroomHorse_entity = nil
+    end
 
-	showroomHorse_model = horseModel
-	showroomHorse_entity = CreatePed(modelHash, SpawnPoint.x, SpawnPoint.y, SpawnPoint.z - 0.98, SpawnPoint.h, false, 0)
-	Citizen.InvokeNative(0x283978A15512B2FE, showroomHorse_entity, true)
-	Citizen.InvokeNative(0x58A850EAEE20FAA3, showroomHorse_entity)
-	NetworkSetEntityInvisibleToNetwork(showroomHorse_entity, true)
-	SetVehicleHasBeenOwnedByPlayer(showroomHorse_entity, true)
-	-- SetModelAsNoLongerNeeded(modelHash)
-	interpCamera("Horse", showroomHorse_entity)
+    showroomHorse_model = horseModel
+    showroomHorse_entity = CreatePed(modelHash, SpawnPoint.x, SpawnPoint.y, SpawnPoint.z - 0.98, SpawnPoint.h, false, 0)
+    Citizen.InvokeNative(0x283978A15512B2FE, showroomHorse_entity, true)
+    Citizen.InvokeNative(0x58A850EAEE20FAA3, showroomHorse_entity)
+    NetworkSetEntityInvisibleToNetwork(showroomHorse_entity, true)
+    SetVehicleHasBeenOwnedByPlayer(showroomHorse_entity, true)
+    interpCamera("Horse", showroomHorse_entity)
 end)
 
 RegisterNUICallback("loadMyHorse", function(data)
-	local horseModel = data.horseModel
-	IdMyHorse = data.IdHorse
+    local horseModel = data.horseModel
+    IdMyHorse = data.IdHorse
 
-	if showroomHorse_model == horseModel then
-		return
-	end
+    if showroomHorse_model == horseModel then
+        return
+    end
 
-	if showroomHorse_entity ~= nil then
-		DeleteEntity(showroomHorse_entity)
-		showroomHorse_entity = nil
-	end
+    if showroomHorse_entity ~= nil then
+        DeleteEntity(showroomHorse_entity)
+        showroomHorse_entity = nil
+    end
 
-	if MyHorse_entity ~= nil then
-		DeleteEntity(MyHorse_entity)
-		MyHorse_entity = nil
-	end
+    if MyHorse_entity ~= nil then
+        DeleteEntity(MyHorse_entity)
+        MyHorse_entity = nil
+    end
 
-	showroomHorse_model = horseModel
+    showroomHorse_model = horseModel
 
-	local modelHash = GetHashKey(showroomHorse_model)
+    local modelHash = GetHashKey(showroomHorse_model)
 
-	if not HasModelLoaded(modelHash) then
-		RequestModel(modelHash)
-		while not HasModelLoaded(modelHash) do
-			Wait(10)
-		end
-	end
+    if not HasModelLoaded(modelHash) then
+        RequestModel(modelHash)
+        while not HasModelLoaded(modelHash) do
+            Wait(10)
+        end
+    end
 
-	MyHorse_entity = CreatePed(modelHash, SpawnPoint.x, SpawnPoint.y, SpawnPoint.z - 0.98, SpawnPoint.h, false, 0)
-	Citizen.InvokeNative(0x283978A15512B2FE, MyHorse_entity, true)
-	Citizen.InvokeNative(0x58A850EAEE20FAA3, MyHorse_entity)
-	NetworkSetEntityInvisibleToNetwork(MyHorse_entity, true)
-	SetVehicleHasBeenOwnedByPlayer(MyHorse_entity, true)
-	local componentsHorse = json.decode(data.HorseComp)
-	if componentsHorse ~= '[]' then
-		for _, Key in pairs(componentsHorse) do
-			local model2 = GetHashKey(tonumber(Key))
-			if not HasModelLoaded(model2) then
-				Citizen.InvokeNative(0xFA28FE3A6246FC30, model2)
-			end
-			Citizen.InvokeNative(0xD3A7B003ED343FD9, MyHorse_entity, tonumber(Key), true, true, true)
-		end
-	end
+    MyHorse_entity = CreatePed(modelHash, SpawnPoint.x, SpawnPoint.y, SpawnPoint.z - 0.98, SpawnPoint.h, false, 0)
+    Citizen.InvokeNative(0x283978A15512B2FE, MyHorse_entity, true)
+    Citizen.InvokeNative(0x58A850EAEE20FAA3, MyHorse_entity)
+    NetworkSetEntityInvisibleToNetwork(MyHorse_entity, true)
+    SetVehicleHasBeenOwnedByPlayer(MyHorse_entity, true)
+    local componentsHorse = json.decode(data.HorseComp)
+    if componentsHorse ~= '[]' then
+        for _, Key in pairs(componentsHorse) do
+            local model2 = GetHashKey(tonumber(Key))
+            if not HasModelLoaded(model2) then
+                Citizen.InvokeNative(0xFA28FE3A6246FC30, model2)
+            end
+            Citizen.InvokeNative(0xD3A7B003ED343FD9, MyHorse_entity, tonumber(Key), true, true, true)
+        end
+    end
 
-	-- SetModelAsNoLongerNeeded(modelHash)
-
-	interpCamera("Horse", MyHorse_entity)
+    interpCamera("Horse", MyHorse_entity)
 end)
 
 RegisterNUICallback("BuyHorse", function(data)
-	SetHorseName(data)
+    SetHorseName(data)
 end)
 
 RegisterNUICallback("CloseStable", function()
-	SetNuiFocus(false, false)
-	SendNUIMessage(
-		{
-			action = "hide"
-		}
-	)
-	SetEntityVisible(PlayerPedId(), true)
+    SetNuiFocus(false, false)
+    SendNUIMessage({
+        action = "hide"
+    })
+    SetEntityVisible(PlayerPedId(), true)
 
-	showroomHorse_model = nil
+    showroomHorse_model = nil
 
-	if showroomHorse_entity ~= nil then
-		DeleteEntity(showroomHorse_entity)
-	end
+    if showroomHorse_entity ~= nil then
+        DeleteEntity(showroomHorse_entity)
+    end
 
-	if MyHorse_entity ~= nil then
-		DeleteEntity(MyHorse_entity)
-	end
+    if MyHorse_entity ~= nil then
+        DeleteEntity(MyHorse_entity)
+    end
 
-	DestroyAllCams(true)
-	showroomHorse_entity = nil
-	CloseStable()
+    DestroyAllCams(true)
+    showroomHorse_entity = nil
+    CloseStable()
 end)
 
---Events
+-- Events
 
-AddEventHandler("onResourceStop",function(resourceName)
-	if resourceName == GetCurrentResourceName() then
-		for _, prompt in pairs(prompts) do
-			PromptDelete(prompt)
-			RemoveBlip(blip)
-		end
-	end
+AddEventHandler("onResourceStop", function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        for _, prompt in pairs(prompts) do
+            PromptDelete(prompt)
+            RemoveBlip(blip)
+        end
+    end
 end)
 
 AddEventHandler("onResourceStop", function(resourceName)
-	if (GetCurrentResourceName() ~= resourceName) then
-		return
-	end
-	SetNuiFocus(false, false)
-	SendNUIMessage(
-		{
-			action = "hide"
-		}
-	)
+    if (GetCurrentResourceName() ~= resourceName) then
+        return
+    end
+    SetNuiFocus(false, false)
+    SendNUIMessage({
+        action = "hide"
+    })
 end)
 
 AddEventHandler("onResourceStop", function(resourceName)
-	if GetCurrentResourceName() == resourceName then
-		DeleteEntity(SpawnplayerHorse)
-		SpawnplayerHorse = 0
-	end
+    if GetCurrentResourceName() == resourceName then
+        DeleteEntity(SpawnplayerHorse)
+        SpawnplayerHorse = 0
+    end
 end)
 
-RegisterNetEvent("VP:HORSE:SetHorseInfo", SetHorseInfo)
+RegisterNetEvent("rsg-stable:SetHorseInfo", SetHorseInfo)
 
-RegisterNetEvent('qbr-stable:client:UpdadeHorseComponents', function(horseEntity, components)
+RegisterNetEvent('rsg-stable:client:UpdateHorseComponents', function(horseEntity, components)
     for _, value in pairs(components) do
         NativeSetPedComponentEnabled(horseEntity, value)
     end
 end)
 
-RegisterNetEvent("qbr-stable:ReceiveHorsesData", function(dataHorses)
-	SendNUIMessage(
-		{
-			myHorsesData = dataHorses
-		}
-	)
+RegisterNetEvent("rsg-stable:ReceiveHorsesData", function(dataHorses)
+    SendNUIMessage({
+        myHorsesData = dataHorses
+    })
 end)
 
 -- Threads
 
 CreateThread(function()
-	while true do
-		Wait(1)
-		local coords = GetEntityCoords(PlayerPedId())
-		for _, prompt in pairs(prompts) do
-			if PromptIsJustPressed(prompt) then
-				for k, v in pairs(Config.Stables) do
-					if #(coords - vector3(v.Pos.x, v.Pos.y, v.Pos.z)) < 7 then
-						HeadingPoint = v.Heading
-						StablePoint = {v.Pos.x, v.Pos.y, v.Pos.z}
-						CamPos = {v.SpawnPoint.CamPos.x, v.SpawnPoint.CamPos.y}
-						SpawnPoint = {x = v.SpawnPoint.Pos.x, y = v.SpawnPoint.Pos.y, z = v.SpawnPoint.Pos.z, h = v.SpawnPoint.Heading}
-						Wait(300)
-					end
-				end
-				OpenStable()
-			end
-		end
-	end
+    while true do
+        Wait(1)
+        local coords = GetEntityCoords(PlayerPedId())
+        for _, prompt in pairs(prompts) do
+            if PromptIsJustPressed(prompt) then
+                for k, v in pairs(Config.Stables) do
+                    if #(coords - vector3(v.Pos.x, v.Pos.y, v.Pos.z)) < 7 then
+                        HeadingPoint = v.Heading
+                        StablePoint = {v.Pos.x, v.Pos.y, v.Pos.z}
+                        CamPos = {v.SpawnPoint.CamPos.x, v.SpawnPoint.CamPos.y}
+                        SpawnPoint = {x = v.SpawnPoint.Pos.x, y = v.SpawnPoint.Pos.y, z = v.SpawnPoint.Pos.z, h = v.SpawnPoint.Heading}
+                        Wait(300)
+                    end
+                end
+                OpenStable()
+            end
+        end
+    end
 end)
 
 CreateThread(function()
-	for _, v in pairs(Config.Stables) do
-		local blip = N_0x554d9d53f696d002(1664425300, v.Pos.x, v.Pos.y, v.Pos.z)
-		SetBlipSprite(blip, 4221798391, 1)
-		SetBlipScale(blip, 0.2)
-		Citizen.InvokeNative(0x9CB1A1623062F402, blip, v.Name)
-		local prompt = PromptRegisterBegin()
-		PromptSetActiveGroupThisFrame(promptGroup, varStringCasa)
-		PromptSetControlAction(prompt, 0xE8342FF2)
-		PromptSetText(prompt, CreateVarString(10, "LITERAL_STRING", "Open Stable"))
-		PromptSetStandardMode(prompt, true)
-		PromptSetEnabled(prompt, 1)
-		PromptSetVisible(prompt, 1)
-		PromptSetHoldMode(prompt, 1)
-		PromptSetPosition(prompt, v.Pos.x, v.Pos.y, v.Pos.z)
-		N_0x0c718001b77ca468(prompt, 3.0)
-		PromptSetGroup(prompt, promptGroup)
-		PromptRegisterEnd(prompt)
-		prompts[#prompts+1] = prompt
-	end
+    for _, v in pairs(Config.Stables) do
+        local blip = N_0x554d9d53f696d002(1664425300, v.Pos.x, v.Pos.y, v.Pos.z)
+        SetBlipSprite(blip, 4221798391, 1)
+        SetBlipScale(blip, 0.2)
+        Citizen.InvokeNative(0x9CB1A1623062F402, blip, v.Name)
+        local prompt = PromptRegisterBegin()
+        PromptSetActiveGroupThisFrame(promptGroup, varStringCasa)
+        PromptSetControlAction(prompt, 0xE8342FF2)
+        PromptSetText(prompt, CreateVarString(10, "LITERAL_STRING", "Open Stable"))
+        PromptSetStandardMode(prompt, true)
+        PromptSetEnabled(prompt, 1)
+        PromptSetVisible(prompt, 1)
+        PromptSetHoldMode(prompt, 1)
+        PromptSetPosition(prompt, v.Pos.x, v.Pos.y, v.Pos.z)
+        N_0x0c718001b77ca468(prompt, 3.0)
+        PromptSetGroup(prompt, promptGroup)
+        PromptRegisterEnd(prompt)
+        prompts[#prompts + 1] = prompt
+    end
 end)
 
 CreateThread(function()
-	while true do
-	Wait(100)
-		if MyHorse_entity ~= nil then
-			SendNUIMessage(
-				{
-					EnableCustom = "true"
-				}
-			)
-		else
-			SendNUIMessage(
-				{
-					EnableCustom = "false"
-				}
-			)
-		end
-	end
+    while true do
+        Wait(100)
+        if MyHorse_entity ~= nil then
+            SendNUIMessage({
+                EnableCustom = "true"
+            })
+        else
+            SendNUIMessage({
+                EnableCustom = "false"
+            })
+        end
+    end
 end)
 
 CreateThread(function()
-	while true do
-		local getHorseMood = Citizen.InvokeNative(0x42688E94E96FD9B4, SpawnplayerHorse, 3, 0, Citizen.ResultAsFloat())
-		if getHorseMood >= 0.60 then
-		Citizen.InvokeNative(0x06D26A96CA1BCA75, SpawnplayerHorse, 3, PlayerPedId())
-		Citizen.InvokeNative(0xA1EB5D029E0191D3, SpawnplayerHorse, 3, 0.99)
-		end
-		Wait(30000)
-	end
+    while true do
+        local getHorseMood = Citizen.InvokeNative(0x42688E94E96FD9B4, SpawnplayerHorse, 3, 0, Citizen.ResultAsFloat())
+        if getHorseMood >= 0.60 then
+            Citizen.InvokeNative(0x06D26A96CA1BCA75, SpawnplayerHorse, 3, PlayerPedId())
+            Citizen.InvokeNative(0xA1EB5D029E0191D3, SpawnplayerHorse, 3, 0.99)
+        end
+        Wait(30000)
+    end
 end)
 
 CreateThread(function()
     while true do
         Wait(1)
-        if Citizen.InvokeNative(0x91AEF906BCA88877, 0, 0x24978A28) then -- Control =  H
-			WhistleHorse()
-			Wait(10000) --Flood Protection? i think yes zoot
+        if Citizen.InvokeNative(0x91AEF906BCA88877, 0, 0x24978A28) then -- Control = H
+            WhistleHorse()
+            Wait(10000) -- Flood Protection
         end
 
         if Citizen.InvokeNative(0x91AEF906BCA88877, 0, 0xB2F377E8) then -- Control = Horse Flee
-         --   local horseCheck = Citizen.InvokeNative(0x7912F7FC4F6264B6, PlayerPedId(), myHorse[4])
-			if SpawnplayerHorse ~= 0 then
-				fleeHorse(SpawnplayerHorse)
-			end
-		end
+            if SpawnplayerHorse ~= 0 then
+                fleeHorse(SpawnplayerHorse)
+            end
+        end
     end
 end)
 
 CreateThread(function()
-	while adding do
-		Wait(0)
-		for i, v in ipairs(HorseComp) do
-			if v.category == "Saddlecloths" then
-				saddlecloths[#saddlecloths+1] = v.Hash
-			elseif v.category == "AcsHorn" then
-				acshorn[#acshorn+1] = v.Hash
-			elseif v.category == "Bags" then
-				bags[#bags+1] = v.Hash
-			elseif v.category == "HorseTails" then
-				horsetails[#horsetails+1] = v.Hash
-			elseif v.category == "Manes" then
-				manes[#manes+1] = v.Hash
-			elseif v.category == "Saddles" then
-				saddles[#saddles+1] = v.Hash
-			elseif v.category == "Stirrups" then
-				stirrups[#stirrups+1] = v.Hash
-			elseif v.category == "AcsLuggage" then
-				acsluggage[#acsluggage+1] = v.Hash
-			end
-		end
-		adding = false
-	end
+    while adding do
+        Wait(0)
+        for i, v in ipairs(HorseComp) do
+            if v.category == "Saddlecloths" then
+                saddlecloths[#saddlecloths + 1] = v.Hash
+            elseif v.category == "AcsHorn" then
+                acshorn[#acshorn + 1] = v.Hash
+            elseif v.category == "Bags" then
+                bags[#bags + 1] = v.Hash
+            elseif v.category == "HorseTails" then
+                horsetails[#horsetails + 1] = v.Hash
+            elseif v.category == "Manes" then
+                manes[#manes + 1] = v.Hash
+            elseif v.category == "Saddles" then
+                saddles[#saddles + 1] = v.Hash
+            elseif v.category == "Stirrups" then
+                stirrups[#stirrups + 1] = v.Hash
+            elseif v.category == "AcsLuggage" then
+                acsluggage[#acsluggage + 1] = v.Hash
+            end
+        end
+        adding = false
+    end
 end)
