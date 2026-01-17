@@ -1,6 +1,29 @@
 Config = {}
 
 Config.MaxNumberOfHorses = 3
+Config.Training = {
+    MaxIQ = 100,
+    MaxXP = 1000,
+    XPPerTrain = 10,
+    IQIncreasePerLevel = 5,
+    BreedingMinAge = 3,
+    TrainingCooldown = 1 * 60 * 1000, -- 1 minute
+    BreedingCooldown = 60 * 60 * 1000, -- 1 hour
+    Jobs = {
+        ['valhorsetrainer'] = true,
+        ['rhohorsetrainer'] = true,
+        ['blkhorsetrainer'] = true,
+        ['strhorsetrainer'] = true,
+        ['stdenhorsetrainer'] = true,
+    }
+}
+
+Config.Aging = {
+    MinStartAge = 14,
+    MaxStartAge = 15,
+    LifespanDays = 75,      -- Horse dies after 75 days (2.5 months)
+    AgeIntervalDays = 3,    -- Horse ages 1 year every 3 days
+}
 
 Config.Stables = {
     valentine = {

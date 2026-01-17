@@ -38,6 +38,7 @@ local SpawnplayerHorse = 0
 local horseModel
 local horseName
 local horseComponents = {}
+local horseStats = {} -- New stats variable
 local initializing = false
 local alreadySentShopData = false
 
@@ -68,19 +69,54 @@ cameraUsing = {
 
 -- Functions
 
-local function SetHorseInfo(horse_model, horse_name, horse_components)
+local function SetHorseInfo(horse_model, horse_name, horse_components, horse_stats, horse_id)
     horseModel = horse_model
     horseName = horse_name
     horseComponents = horse_components
+    horseStats = horse_stats or {}
+    horseId = horse_id
 end
 
 local function NativeSetPedComponentEnabled(ped, component)
     Citizen.InvokeNative(0xD3A7B003ED343FD9, ped, component, true, true, true)
 end
 
+-- Top of file or near Init
+DecorRegister("horseId", 3)
+
+-- ...
+
+
+
+RegisterNetEvent('rsg-stable:client:BreedHorse', function(data)
+    local entity = data.entity
+    local myHorse = SpawnplayerHorse
+    
+    if not entity or not DoesEntityExist(entity) then return end
+    if not myHorse or not DoesEntityExist(myHorse) then return end
+    
+    if entity == myHorse then
+        TriggerEvent('rsg-core:notify', "You cannot breed with yourself!", "error")
+        return
+    end
+
+    local idA = DecorGetInt(entity, "horseId")
+    local idB = DecorGetInt(myHorse, "horseId")
+    
+    if not idA or idA == 0 or not idB or idB == 0 then
+         TriggerEvent('rsg-core:notify', "Invalid horse data.", "error")
+         return
+    end
+    
+    -- Simple Input for Name
+    local foalName = "Foal" -- Default
+    -- We can try to get input, but for stability, let's use a server-generated name or simpler flow
+    -- Trigger Server
+    TriggerServerEvent('rsg-stable:BreedHorse', idA, idB, foalName)
+end)
+
 local function createCamera(entity)
     if not CamPos then 
-        print("ERROR: No CamPos defined")
         return 
     end
     
@@ -286,7 +322,6 @@ local function InitiateHorse(atCoords)
     SetPedConfigFlag(entity, 113, false)
     SetPedConfigFlag(entity, 301, false)
     SetPedConfigFlag(entity, 277, true)
-    SetPedConfigFlag(entity, 319, true)
     SetPedConfigFlag(entity, 6, true)
 
     SetAnimalTuningBoolParam(entity, 25, false)
@@ -297,6 +332,10 @@ local function InitiateHorse(atCoords)
     Citizen.InvokeNative(0x283978A15512B2FE, entity, true)
     SetPedNameDebug(entity, horseName)
     SetPedPromptName(entity, horseName)
+    
+    if horseId then
+        DecorSetInt(entity, "horseId", horseId)
+    end
     
     if horseComponents ~= nil and horseComponents ~= "0" then
         local validJson, components = pcall(json.decode, horseComponents)
@@ -315,7 +354,47 @@ local function InitiateHorse(atCoords)
     TaskGoToEntity(entity, ped, -1, 7.2, 2.0, 0, 0)
     SetPedConfigFlag(entity, 297, true)
     initializing = false
+    
+    -- Add Interations
+    exports['rsg-target']:AddTargetEntity(entity, {
+        options = {
+            {
+                type = "client",
+                event = "rsg-stable:client:TrainHorse",
+                icon = "fas fa-dumbbell",
+                label = "Train Horse",
+                job = {["valhorsetrainer"] = 0, ["rhohorsetrainer"] = 0, ["blkhorsetrainer"] = 0, ["strhorsetrainer"] = 0, ["stdenhorsetrainer"] = 0},
+            },
+           -- Breeding interaction to be added fully later or via menu, simplest is command or proximity for now
+           -- Leaving as placeholder or basic implementation
+        },
+        distance = 2.0,
+    })
 end
+
+RegisterNetEvent('rsg-stable:client:TrainHorse', function()
+    -- Only allow training your own horse or a horse you are targeting (which we are)
+    -- We need the entity network ID
+    if SpawnplayerHorse and DoesEntityExist(SpawnplayerHorse) then
+        local netId = NetworkGetNetworkIdFromEntity(SpawnplayerHorse)
+        TriggerServerEvent('rsg-stable:TrainHorse', netId)
+    end
+end)
+
+-- Handling Loop for IQ Effect
+CreateThread(function()
+    while true do
+        Wait(5000)
+        if SpawnplayerHorse and DoesEntityExist(SpawnplayerHorse) and IsPedInVehicle(PlayerPedId(), SpawnplayerHorse, false) then
+            if horseStats and horseStats.iq and horseStats.iq < 20 then
+                -- Low IQ Effect: Random agitation or refusal
+                if math.random(1, 100) < 10 then
+                   TaskAnimalAgitated(SpawnplayerHorse, -1)
+                end
+            end
+        end
+    end
+end)
 
 local function WhistleHorse()
     if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
@@ -576,13 +655,17 @@ RegisterNUICallback("sellHorse", function(data)
 end)
 
 RegisterNUICallback("loadHorse", function(data)
-    print('[RSG-Stable] loadHorse called with model: ' .. tostring(data.horseModel))
     local horseModel = data.horseModel
-
-    if showroomHorse_model == horseModel then
-        print('[RSG-Stable] loadHorse: Same model, returning')
+    
+    if not horseModel or horseModel == "" then
         return
     end
+    
+    if showroomHorse_model == horseModel then
+        return
+    end
+    
+    showroomHorse_model = horseModel -- Update tracking variable
 
     if MyHorse_entity ~= nil and DoesEntityExist(MyHorse_entity) then
         DeleteEntity(MyHorse_entity)
@@ -601,7 +684,7 @@ RegisterNUICallback("loadHorse", function(data)
             end
         end
     else
-        print('[RSG-Stable] loadHorse: Invalid model hash')
+        -- invalid model hash
     end
 
     if showroomHorse_entity ~= nil and DoesEntityExist(showroomHorse_entity) then
@@ -611,7 +694,6 @@ RegisterNUICallback("loadHorse", function(data)
 
     -- Safety check for SpawnPoint
     if not SpawnPoint or not SpawnPoint.x then
-        print("ERROR: SpawnPoint is nil in loadHorse")
         return 
     end
 
@@ -619,8 +701,6 @@ RegisterNUICallback("loadHorse", function(data)
     showroomHorse_entity = CreatePed(modelHash, SpawnPoint.x, SpawnPoint.y, SpawnPoint.z, SpawnPoint.h, false, 0)
     
     if DoesEntityExist(showroomHorse_entity) then
-        print('[RSG-Stable] Showroom horse created at: ' .. SpawnPoint.x .. ', ' .. SpawnPoint.y .. ', ' .. SpawnPoint.z)
-        
         -- Configuration for showroom horse
         SetEntityVisible(showroomHorse_entity, true)
         SetEntityAlpha(showroomHorse_entity, 255, false)
@@ -634,7 +714,7 @@ RegisterNUICallback("loadHorse", function(data)
         
         interpCamera("Horse", showroomHorse_entity)
     else
-        print('[RSG-Stable] Showroom horse creation failed!')
+        -- creation failed
     end
 end)
 
@@ -766,14 +846,11 @@ local varStringCasa = CreateVarString(10, "LITERAL_STRING", Lang:t('stable.stabl
 local spawnedPeds = {}
 
 local function SpawnStableNPCs()
-    print("[RSG-Stable] Starting NPC Spawn...")
     for k, v in pairs(Config.Stables) do
         if v.StableNPC then
-            print("[RSG-Stable] Attempting to spawn NPC for: " .. v.Name)
             local model = GetHashKey(v.StableNPC.model)
             
             if not IsModelInCdimage(model) then
-                print("[RSG-Stable] ERROR: Model not found in CD image: " .. v.StableNPC.model)
                 goto continue
             end
 
@@ -785,14 +862,12 @@ local function SpawnStableNPCs()
             end
             
             if not HasModelLoaded(model) then
-                print("[RSG-Stable] ERROR: Failed to load model: " .. v.StableNPC.model)
                 goto continue 
             end
 
             local npc = CreatePed(model, v.StableNPC.x, v.StableNPC.y, v.StableNPC.z, v.StableNPC.h, false, false)
             
             if DoesEntityExist(npc) then
-                print("[RSG-Stable] NPC Created ID: " .. npc)
                 SetEntityVisible(npc, true)
                 SetEntityAlpha(npc, 255, false)
                 Citizen.InvokeNative(0x283978A15512B2FE, npc, true)
@@ -814,7 +889,6 @@ local function SpawnStableNPCs()
                     },
                     distance = 3.0,
                 })
-                print("[RSG-Stable] Target added for NPC at " .. v.Name)
                 
                 if v.showblip ~= false then 
                     local blip = N_0x554d9d53f696d002(1664425300, v.Pos.x, v.Pos.y, v.Pos.z)
@@ -823,12 +897,11 @@ local function SpawnStableNPCs()
                     Citizen.InvokeNative(0x9CB1A1623062F402, blip, v.Name)
                 end
             else
-                print("[RSG-Stable] ERROR: CreatePed failed for " .. v.Name)
+                -- creation failed
             end
             ::continue::
         end
     end
-    print("[RSG-Stable] NPC Spawn Loop Finished")
 end
 
 -- Event to handle opening from target

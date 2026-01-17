@@ -17,5 +17,13 @@ CREATE TABLE IF NOT EXISTS `horses` (
   `model` varchar(50) NOT NULL,
   `name` varchar(50) NOT NULL,
   `components`  varchar(5000) NOT NULL DEFAULT '{}',
+  `iq` int(11) NOT NULL DEFAULT 0,
+  `xp` int(11) NOT NULL DEFAULT 0,
+  `age` int(11) NOT NULL DEFAULT 0,
+  `gender` varchar(10) NOT NULL DEFAULT 'Male',
+  `breed_type` varchar(50) DEFAULT NULL,
+  `stable` varchar(50) DEFAULT NULL,
+  `born_date` int(11) NOT NULL DEFAULT 0,
+  `last_age_update` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)
 );

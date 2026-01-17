@@ -38,16 +38,13 @@ window.addEventListener('message', function (event) {
 
                         $(`#page_shop .scroll-container .collapsible #${index} .collapsible-body`).append(`
 
-                            <div id="${_}" onhover="loadHorse(this)" class="col s12 panel item">
+                            <div id="${_}" onmouseenter="loadHorse(this)" class="col s12 panel item">
 
                                 <div class="col s6 panel-col item">
                                     <h6 class="grey-text title" style="color:white;">${HorseName}</h6>
                                 </div>          
 
-                                <div class="buy-buttons">                                       
-                                    <button class="btn-small"  onclick="buyHorse('${_}', ${priceGold}, true)">                                                
-                                        <img src="img/gold.png"><span class="horse-price">${priceGold}</span>
-                                    </button>                                          
+                                <div class="buy-buttons center-align">                                       
                                     <button class="btn-small"  onclick="buyHorse('${_}', ${priceDolar}, false)">
                                         <img src="img/money.png"><span class="horse-price">${priceDolar}</span>
                                     </button>
@@ -108,12 +105,46 @@ window.addEventListener('message', function (event) {
             let componentsh = tab.components;
             let selectedh = tab.selected;
 
+            // Stats
+            let gender = tab.gender || 'Male';
+            let age = tab.age || 0;
+            let xp = tab.xp || 0;
+            let iq = tab.iq || 0;
+            let genderIcon = gender == 'Female' ? 'venus' : 'mars';
+            let genderColor = gender == 'Female' ? 'pink' : 'lightblue';
+
+            // Ensure stable property exists or default it
+            let stableLoc = (tab.stable && tab.stable != "null") ? tab.stable : "Valentine";
+            let uniqueHeaderID = `header-${HorseID}`;
+
             $('#page_myhorses .scroll-container .collapsible').append(`
                 <li>
-                    <div id="heads" class="collapsible-header col s12 panel" style="background-color: transparent; border: 0;">
-                        <div class="col s12 panel-title">
-                            <h6 class="grey-text">${HorseName}</h6>
+                    <div id="${uniqueHeaderID}" class="collapsible-header col s12 panel" style="background-color: transparent; border: 0; min-height: 80px; display: block; padding: 10px;">
+                        
+                        <div class="row" style="margin: 0; margin-bottom: 5px;">
+                            <div class="col s12 center-align">
+                                <h6 class="grey-text" style="font-size: 1.5rem; margin: 0; color: #e0e0e0;">${HorseName}</h6>
+                            </div>
                         </div>
+
+                        <div class="row" style="margin: 0; margin-bottom: 10px;">
+                            <div class="col s12 center-align">
+                                <i class="fas fa-${genderIcon}" style="color: ${genderColor}; font-size: 1.5rem;"></i>
+                            </div>
+                        </div>
+
+                        <div class="row" style="margin: 0;">
+                            <div class="col s6 left-align" style="padding-right: 5px;">
+                                <div style="font-size: 0.9rem; color: #b0b0b0;">Health: <span style="color: #fff; font-weight: bold;">100%</span></div>
+                                <div style="font-size: 0.9rem; color: #b0b0b0; margin-top: 5px;">XP: <span style="color: #fff; font-weight: bold;">${xp}</span></div>
+                            </div>
+                            
+                            <div class="col s6 right-align" style="padding-left: 5px;">
+                                <div style="font-size: 0.9rem; color: #b0b0b0;">Age: <span style="color: #fff; font-weight: bold;">${age}</span></div>
+                                <div style="font-size: 0.9rem; color: #b0b0b0; margin-top: 5px;">Stable: <span style="color: #fff; font-weight: bold;">${stableLoc}</span></div>
+                            </div>
+                        </div>
+
                     </div>
                     <div class="collapsible-body col s12 panel item" id="${HorseID}">
                         <div class="col s6 panel-col item" onclick="SelectHorse(${HorseID})">
@@ -126,9 +157,10 @@ window.addEventListener('message', function (event) {
                 </li> 
             `);
 
-            $(`#page_myhorses .scroll-container .collapsible #${HorseID}`).on('click', function () {
+            // Attach Click Event to HEADER to load preview when expanded
+            $(`#page_myhorses .scroll-container .collapsible #${uniqueHeaderID}`).on('click', function () {
                 $('.selected').removeClass("selected");
-                $('#' + HorseID).addClass("selected");
+                $(this).addClass("selected"); // Highlight header? or just load preview
                 $.post('https://devchacha-stable/loadMyHorse', JSON.stringify({ IdHorse: HorseID, horseModel: HorseIdModel, HorseComp: componentsh }));
             });
         }
@@ -248,6 +280,11 @@ function buyHorse(Modelhor, price, isGold) {
 
 function SelectHorse(IdHorse) {
     $.post('https://devchacha-stable/selectHorse', JSON.stringify({ horseID: IdHorse }))
+}
+
+function loadHorse(element) {
+    var model = $(element).attr('id');
+    $.post('https://devchacha-stable/loadHorse', JSON.stringify({ horseModel: model }));
 }
 
 
