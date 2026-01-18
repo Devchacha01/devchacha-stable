@@ -620,3 +620,39 @@ RegisterNetEvent('rsg-stable:BreedHorse', function(sireId, damId, name)
         end)
     end)
 end)
+
+
+-- Save Horse Components
+RegisterNetEvent('rsg-stable:UpdateHorseComponents', function(components, horseId, horseEntity)
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    local cid = Player.PlayerData.citizenid
+    
+    -- Verify ownership
+    MySQL.query('SELECT * FROM horses WHERE id = ? AND cid = ?', {horseId, cid}, function(result)
+        if result and result[1] then
+             local componentsJson = json.encode(components)
+             MySQL.update('UPDATE horses SET components = ? WHERE id = ?', {componentsJson, horseId})
+             
+             -- Update client with new components to ensure consistency across re-logs
+             TriggerClientEvent("rsg-stable:client:UpdateHorseComponents", src, horseEntity, components)
+        end
+    end)
+end)
+
+-- Charge for Customization
+RegisterNetEvent('rsg-stable:server:ChargeCustomization', function(amount)
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    local currentCash = Player.PlayerData.money['cash']
+    if currentCash >= amount then
+        Player.Functions.RemoveMoney('cash', amount, 'stable-customization')
+        TriggerClientEvent('rsg-core:notify', src, 'Paid $'..amount..' for customization services.', 'success')
+    else
+        TriggerClientEvent('rsg-core:notify', src, 'You could not afford the customization fee ($'..amount..').', 'error')
+    end
+end)

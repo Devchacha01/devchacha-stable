@@ -1,8 +1,52 @@
 $('#creatormenu').fadeOut(0);
 
+// Menu Navigation Handler
+$(document).on('click', '.menu-selectb', function () {
+    if ($(this).hasClass('disabled')) return;
+
+    var target = $(this).data('target');
+
+    $('.menu-selectb').removeClass('active');
+    $(this).addClass('active');
+
+    $('#page_myhorses, #page_shop, #page_transfers, #page_customization').hide();
+    $('#' + target).show();
+});
+
+var hasCustomized = false;
+var initialComponents = {};
+var currentComponents = {};
+
+function getItemPrice(val) {
+    if (val <= 0) return 0;
+    // Determinstic price based on ID: Range $5 - $10
+    return 5 + (val % 6);
+}
+
 
 window.addEventListener('message', function (event) {
     if (event.data.action == "show") {
+        hasCustomized = false;
+        initialComponents = {};
+        currentComponents = {};
+
+        // Capture initial state from DOM inputs after a short delay to ensure they are set
+        setTimeout(function () {
+            $('.input-number').each(function () {
+                var cat = $(this).attr('id');
+                var val = parseInt($(this).val()) || 0;
+                initialComponents[cat] = val;
+                currentComponents[cat] = val;
+
+                // Initialize UI prices
+                var $btn = $(this).siblings('.button-right'); // Just grab a sibling to find context
+                if ($btn.length) {
+                    var max = parseInt($(this).attr('max')) || 100;
+                    updateCustomizationUI($btn, val, max);
+                }
+            });
+        }, 100);
+
         $("#creatormenu").fadeIn(500);
 
 
@@ -180,8 +224,19 @@ window.addEventListener('message', function (event) {
 
 });
 
-function confirm() {
-    $.post('https://devchacha-stable/CloseStable')
+// function confirm(shouldSpawn)
+function confirm(shouldSpawn) {
+    var doSpawn = shouldSpawn === true; // Force boolean
+
+    // Calculate Total Cost
+    var totalCost = 0;
+    for (var cat in currentComponents) {
+        if (currentComponents[cat] !== initialComponents[cat]) {
+            totalCost += getItemPrice(currentComponents[cat]);
+        }
+    }
+
+    $.post('https://devchacha-stable/CloseStable', JSON.stringify({ spawn: doSpawn, customized: hasCustomized, cost: totalCost }));
 
     $('#button-customization').addClass("disabled");
     $('#page_myhorses .scroll-container .collapsible').html('');
@@ -189,112 +244,12 @@ function confirm() {
     $("#creatormenu").fadeOut(500);
 }
 
-var currentPage = 'page_myhorses';
-
-
-// Menu Navigation - Add Transfers Tab Handler
-$('.menu-selectb').on('click', function () {
-    $(`#${currentPage}`).hide();
-
-    currentPage = $(this).data('target');
-    $(`#${currentPage}`).show();
-
-    $('.menu-selectb.active').removeClass('active');
-    $(this).addClass('active');
-
-    // Load Pending Transfers when tab is clicked
-    if (currentPage === 'page_transfers') {
-        $.post('https://devchacha-stable/getPendingTransfers', JSON.stringify({}));
-    }
-});
-
-// Listener for Pending Transfers Data
-window.addEventListener('message', function (event) {
-    // ... existing listeners ...
-    if (event.data.action === "updatePendingTransfers") {
-        const transfers = event.data.transfers;
-        const $list = $('#transfers-list');
-        $list.html('');
-
-        if (transfers.length === 0) {
-            $list.append(`
-                <li>
-                    <div class="collapsible-header col s12 panel">
-                        <div class="col s12 panel-title">
-                            <h6 class="grey-text">No pending transfers.</h6>
-                        </div>
-                    </div>
-                </li>
-            `);
-        } else {
-            transfers.forEach(function (t) {
-                const priceText = t.price > 0 ? `$${t.price}` : 'Free';
-                $list.append(`
-                    <li>
-                        <div class="collapsible-header col s12 panel" style="display: block; min-height: 80px; padding: 10px;">
-                            <div class="row" style="margin: 0;">
-                                <div class="col s12">
-                                    <h6 class="grey-text" style="color: white; font-weight: bold;">${t.horse_name}</h6>
-                                    <span class="grey-text" style="font-size: 0.8rem;">From: ${t.sender_name}</span>
-                                </div>
-                            </div>
-                            <div class="row" style="margin: 5px 0 0 0; display: flex; align-items: center; justify-content: space-between;">
-                                <div class="col s4">
-                                    <span style="color: #4CAF50; font-weight: bold;">${priceText}</span>
-                                </div>
-                                <div class="col s8 right-align">
-                                    <button class="btn-small green waves-effect" onclick="respondTransfer(${t.id}, true)">Accept</button>
-                                    <button class="btn-small red waves-effect" onclick="respondTransfer(${t.id}, false)">Decline</button>
-                                </div>
-                            </div>
-                        </div>
-                    </li>
-                `);
-            });
-        }
-        $('#transfers-list').collapsible();
-    }
-    // ... existing listeners ...
-});
-
-// Respond to Transfer
-function respondTransfer(transferId, accepted) {
-    $.post('https://devchacha-stable/respondTransfer', JSON.stringify({
-        transferId: transferId,
-        accepted: accepted
-    }));
-
-    // Optimistically remove from UI or wait for refresh
-    setTimeout(function () {
-        $.post('https://devchacha-stable/getPendingTransfers', JSON.stringify({}));
-    }, 500);
-}
-
-
-function TransferHorse(horseId, horseName) {
-    // Simplified: Just close UI and trigger client startTransferNUICallback
-    // The client script will then handle the input via chat command or rsg-input if available
-
-    $.post('https://devchacha-stable/startTransfer', JSON.stringify({
-        horseID: horseId,
-        horseName: horseName
-    }));
-
-    $('#button-customization').addClass("disabled");
-    $('#page_myhorses .scroll-container .collapsible').html('');
-    $("#creatormenu").fadeOut(500);
-}
-
-// Restore missing functions
-function loadHorse(element) {
-    var model = $(element).attr('id');
-    $.post('https://devchacha-stable/loadHorse', JSON.stringify({ horseModel: model }));
-}
+// ...
 
 function SelectHorse(horseId) {
     $.post('https://devchacha-stable/selectHorse', JSON.stringify({ horseID: horseId }));
-    // Auto-confirm/close to take out horse
-    confirm();
+    // Auto-confirm/close to take out horse with SPAWN = true
+    confirm(true);
 }
 
 function SellHorse(horseId) {
@@ -355,14 +310,19 @@ function updateCustomizationUI($btn, val, max) {
     var $title = $panel.find('.title');
     // Extract base text (e.g., "Saddle Cloth")
     var currentText = $title.text();
-    var baseText = currentText.split(' ')[0];
-    if (currentText.includes('Saddle Cloth')) baseText = "Saddle Cloth"; // Special case for space
+    // Regex to get name before numbers
+    var baseText = currentText.replace(/[0-9\/$ ()]+/g, '').trim();
 
-    // Update text to "Name Val/Max"
-    $title.text(`${baseText} ${val}/${max}`);
+    var price = getItemPrice(val);
+    var priceText = price > 0 ? ` ($${price})` : "";
+
+    // Update text to "Name Val/Max ($Price)"
+    $title.text(`${baseText} ${val}/${max}${priceText}`);
 }
 
 function triggerCustomizationUpdate(category, value) {
+    hasCustomized = true;
+    currentComponents[category] = value;
     // Categories: Saddlecloths, Saddles, Stirrups, AcsHorn, Bags, HorseTails, Manes, AcsLuggage
     // Lua expects: { id: value }
     $.post(`https://devchacha-stable/${category}`, JSON.stringify({ id: value }));

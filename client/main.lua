@@ -82,7 +82,7 @@ local function SetHorseInfo(horse_model, horse_name, horse_components, horse_sta
     horseName = horse_name
     horseComponents = horse_components
     horseStats = horse_stats or {}
-    horseId = horse_id
+    IdMyHorse = horse_id
 end
 
 local function NativeSetPedComponentEnabled(ped, component)
@@ -432,6 +432,8 @@ local function InitiateHorse(atCoords)
         Citizen.InvokeNative(0x283978A15512B2FE, entity, true)
         SetPedNameDebug(entity, horseName)
         SetPedPromptName(entity, horseName)
+        DecorSetInt(entity, "horseId", IdMyHorse)
+
         
         -- Components
         if horseComponents ~= nil and horseComponents ~= "0" then
@@ -463,21 +465,19 @@ local function InitiateHorse(atCoords)
         
     end -- End of isVehicle check
 
-    -- Teleport Player Near Horse (Exit Stable)
-    local entityCoords = GetEntityCoords(entity)
-    -- Calculate a safe position 1.5m to the side
-    local offset = GetOffsetFromEntityInWorldCoords(entity, 1.5, 0.0, 0.0)
-    
-    ClearPedTasksImmediately(ped)
-    SetEntityCoords(ped, offset.x, offset.y, offset.z)
-    SetEntityHeading(ped, GetEntityHeading(entity))
-    FreezeEntityPosition(entity, false)
+    -- Natural Mount Logic
+    -- Wait a moment for entity to settle
+    Wait(500)
     
     if SetPlayerOwnsMount then
         SetPlayerOwnsMount(ped, entity)
     end
     
-    TriggerEvent('rsg-core:notify', 'Your horse is ready outside.', 'success')
+    TriggerEvent('rsg-core:notify', 'Horse ready.', 'success')
+    
+    -- Command ped to mount naturally
+    TaskMountAnimal(ped, entity, -1, -1, 2.0, 1, 0, 0)
+    SetPedKeepTask(ped, true)
     
     if not isVehicle then
         SetPedConfigFlag(entity, 297, true)
@@ -497,7 +497,8 @@ local function InitiateHorse(atCoords)
                     icon = "fas fa-box-open",
                     label = "Open Saddlebag",
                     canInteract = function(entity)
-                        return HasSaddlebag()
+                        -- Allow interaction if it has a horseId decorator (owned horse)
+                        return DecorGetInt(entity, "horseId") ~= 0 and HasSaddlebag()
                     end,
                 },
             },
@@ -518,27 +519,41 @@ RegisterNetEvent('rsg-stable:client:TrainHorse', function()
 end)
 
 RegisterNetEvent('rsg-stable:client:OpenSaddlebag', function(data)
+    print("DEBUG: OpenSaddlebag triggered")
     -- rsg-target passes data which includes .entity
     local entity = data and data.entity
-    if not entity then return end
+    if not entity then 
+        print("DEBUG: No entity found in data")
+        return 
+    end
 
     local horseId = DecorGetInt(entity, "horseId")
+    print("DEBUG: Entity found, horseId decorator:", horseId)
+
     if not horseId or horseId == 0 then
         -- Fallback to global if decorating failed or old horse
         horseId = IdMyHorse
+        print("DEBUG: Fallback to global IdMyHorse:", IdMyHorse)
     end
 
     if not horseId then 
         TriggerEvent('rsg-core:notify', 'Cannot identify this horse.', 'error')
+        print("DEBUG: Failed to identify horseId")
         return 
     end
     
     local stashId = "stable_" .. horseId
-    TriggerServerEvent("inventory:server:OpenInventory", "stash", stashId, {
-        maxweight = 20000,
-        slots = 10,
+    print("DEBUG: Opening stash:", stashId)
+    
+    -- Try triggering the inventory open event
+    -- Try triggering the custom stable stash open event
+    -- Corrected trigger for rsg-inventory
+    TriggerServerEvent("rsg-inventory:server:OpenInventory", stashId, {
+        maxweight = 40000,
+        slots = 30,
+        label = "Saddlebag"
     })
-    TriggerEvent("inventory:client:SetCurrentStash", stashId)
+    TriggerEvent("rsg-inventory:client:SetCurrentStash", stashId)
 end)
 
 -- Ride Restriction for Young Horses
@@ -926,6 +941,8 @@ RegisterNUICallback("loadHorse", function(data)
         DeleteEntity(MyHorse_entity)
         MyHorse_entity = nil
     end
+    
+    inCustomization = false -- Shop horses cannot be customized until bought
 
     local modelHash = GetHashKey(horseModel)
 
@@ -990,6 +1007,9 @@ RegisterNUICallback("loadMyHorse", function(data)
         DeleteEntity(MyHorse_entity)
         MyHorse_entity = nil
     end
+    
+    -- Enable Customization for owned horses
+    inCustomization = true
 
     showroomHorse_model = horseModel
 
@@ -1133,12 +1153,40 @@ RegisterCommand("transferhorse", function(source, args)
     pendingTransferHorse = nil
 end)
 
-RegisterNUICallback("CloseStable", function()
+RegisterNUICallback("CloseStable", function(data)
     SetNuiFocus(false, false)
     SendNUIMessage({
         action = "hide"
     })
     SetEntityVisible(PlayerPedId(), true)
+
+    -- SAVE CUSTOMIZATION
+    -- Only save if we are indeed in customization mode (EnableCustom was true)
+    -- We can check if any *Using variable is set? Or just always save for safety if MyHorse_entity exists
+    if MyHorse_entity and DoesEntityExist(MyHorse_entity) and IdMyHorse then
+        -- Gather components
+        -- Gather components using index-based array to ensure valid JSON array
+        local components = {}
+        if SaddlesUsing then components[#components+1] = SaddlesUsing end
+        if SaddleclothsUsing then components[#components+1] = SaddleclothsUsing end
+        if StirrupsUsing then components[#components+1] = StirrupsUsing end
+        if BagsUsing then components[#components+1] = BagsUsing end
+        if ManesUsing then components[#components+1] = ManesUsing end
+        if HorseTailsUsing then components[#components+1] = HorseTailsUsing end
+        if AcsHornUsing then components[#components+1] = AcsHornUsing end
+        if AcsLuggageUsing then components[#components+1] = AcsLuggageUsing end
+        
+        -- Save to Server
+        TriggerServerEvent('rsg-stable:UpdateHorseComponents', components, IdMyHorse, MyHorse_entity)
+        
+        -- Charge Cost (e.g. $10 service fee for accessing stable customization)
+        -- Only charge if data.spawn is FALSE (meaning we clicked Confirm inside customization)
+        -- or we can track if 'inCustomization' was true.
+        if inCustomization and data.customized and data.cost and data.cost > 0 then
+             TriggerServerEvent('rsg-stable:server:ChargeCustomization', data.cost) 
+        end
+    end
+
 
     showroomHorse_model = nil
 
@@ -1152,13 +1200,14 @@ RegisterNUICallback("CloseStable", function()
 
     DestroyAllCams(true)
     showroomHorse_entity = nil
+    inCustomization = false -- Reset customization state
     CloseStable()
     
-    -- Spawn logic for "Take Out"
-    -- Check if we have a valid horse selected (globals should be set by SetHorseInfo)
-    -- InitiateHorse handles fetching if needed
-    Wait(200) 
-    InitiateHorse()
+    -- Spawn logic for "Take Out" - Only if requested
+    if data and data.spawn then
+        Wait(200) 
+        InitiateHorse()
+    end
 end)
 
 AddEventHandler("onResourceStop", function(resourceName)
