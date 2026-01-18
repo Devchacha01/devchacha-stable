@@ -1,4 +1,5 @@
 -- RSGCore Stable Client
+local RSGCore = exports['rsg-core']:GetCoreObject()
 -- Variables
 
 cam = nil
@@ -556,47 +557,279 @@ RegisterNetEvent('rsg-stable:client:OpenSaddlebag', function(data)
     
     local stashId = "stable_" .. horseId
     
+    -- Request access from server (Lock Logic)
+    TriggerServerEvent("rsg-stable:server:CheckSaddlebag", stashId)
+end)
+
+RegisterNetEvent('rsg-stable:client:SaddlebagApproved', function(stashId)
+    -- Access granted, open inventory
     TriggerServerEvent("rsg-inventory:server:OpenInventory", stashId, {
         maxweight = 40000,
         slots = 30,
         label = "Saddlebag"
     })
     TriggerEvent("rsg-inventory:client:SetCurrentStash", stashId)
+    
+    -- Monitor closing to release lock
+    CreateThread(function()
+        Wait(2000) -- Wait for inventory to open
+        while true do
+            Wait(1000)
+            -- Check if NUI focus is lost (Inventory Closed)
+            if not IsNuiFocused() then
+                TriggerServerEvent('rsg-stable:server:CloseSaddlebag', stashId)
+                break
+            end
+        end
+    end)
 end)
 
+RegisterNetEvent('rsg-stable:client:SaddlebagDenied', function()
+    -- Lock denied, nothing to do (notification sent from server)
+end)
+
+local function GetClosestHorse()
+    local ped = PlayerPedId()
+    
+    -- Check if mounted
+    if IsPedOnMount(ped) then
+        return GetMount(ped)
+    end
+    
+    -- Check detection
+    local coords = GetEntityCoords(ped)
+    local peds = RSGCore.Functions.GetPeds({ignoreList = {ped, cache.ped}})
+    local closestHorse = nil
+    local shortestDist = 3.0 -- Interaction range
+    
+    for _, entity in pairs(peds) do
+        local dist = #(coords - GetEntityCoords(entity))
+        if dist < shortestDist then
+            local model = GetEntityModel(entity)
+            if Citizen.InvokeNative(0x772A1969F649E902, model) then -- IsThisModelAHorse
+                closestHorse = entity
+                shortestDist = dist
+            end
+        end
+    end
+    
+    return closestHorse
+end
+
+-- Helper for getting closest horse (for items)
+local function GetClosestHorse()
+    local ped = PlayerPedId()
+    if IsPedOnMount(ped) then return GetMount(ped) end
+    
+    local coords = GetEntityCoords(ped)
+    local peds = RSGCore.Functions.GetPeds({ignoreList = {ped}})
+    local closestHorse, shortestDist = nil, 3.0
+    
+    for _, entity in pairs(peds) do
+        local dist = #(coords - GetEntityCoords(entity))
+        if dist < shortestDist and Citizen.InvokeNative(0x772A1969F649E902, GetEntityModel(entity)) then
+            closestHorse, shortestDist = entity, dist
+        end
+    end
+    return closestHorse
+end
+
+-- Item: Brush Horse
+RegisterNetEvent('rsg-horses:client:playerbrushhorse', function()
+    local horse = GetClosestHorse()
+    if horse and DoesEntityExist(horse) then
+        TriggerEvent('rsg-stable:client:BrushHorse', {entity = horse})
+    else
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse nearby!', duration = 3000})
+    end
+end)
+
+-- Item: Feed Horse
+RegisterNetEvent('rsg-horses:client:playerfeedhorse', function(itemName)
+    local horse = GetClosestHorse()
+    if horse and DoesEntityExist(horse) then
+        TriggerServerEvent('rsg-stable:server:FeedHorse', itemName, NetworkGetNetworkIdFromEntity(horse))
+    else
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse nearby!', duration = 3000})
+    end
+end)
+
+-- Item: Horse Lantern
+RegisterNetEvent('rsg-horses:client:equipHorseLantern', function()
+    local horse = GetClosestHorse()
+    if not horse then return TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse nearby!', duration = 3000}) end
+    
+    -- Toggle Lantern Logic
+    if not DecorIsRegisteredAsType("horselantern", 3) then DecorRegister("horselantern", 3) end
+    
+    if DecorGetInt(horse, "horselantern") == 1 then
+         -- Remove
+         local lantern = GetEntityBoneIndexByName(horse, "SKEL_L_Horsebag") -- Attach point?
+         -- Actually we need to find the attached object and delete it.
+         -- Simple toggle logic:
+         DecorSetInt(horse, "horselantern", 0)
+         -- Remove logic usually requires tracking the entity or iterating attached options.
+         TriggerEvent('ox_lib:notify', {type = 'inform', description = 'Lantern removed', duration = 3000})
+    else
+         -- Add
+         DecorSetInt(horse, "horselantern", 1)
+         -- Attach lantern prop
+         -- Generic implementation:
+         local coords = GetEntityCoords(horse)
+         local prop = CreateObject(GetHashKey("p_lantern01x"), coords.x, coords.y, coords.z, true, true, false)
+         AttachEntityToEntity(prop, horse, GetEntityBoneIndexByName(horse, "SKEL_L_Horsebag"), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, true, true, false, true, 1, true)
+         TriggerEvent('ox_lib:notify', {type = 'success', description = 'Lantern equipped', duration = 3000})
+    end
+end)
+
+---------------------------------------------------------------------------
+-- Leading & Interaction System (Grazing, Drinking)
+---------------------------------------------------------------------------
+local objectInteract = false
+local ActionHorseDrink, ActionHorseGraze
+local DrinkPrompt, GrazePrompt = GetRandomIntInRange(0, 0xffffff), GetRandomIntInRange(0, 0xffffff)
+
+local function SetupActionPrompt()
+    ActionHorseDrink = PromptRegisterBegin()
+    PromptSetControlAction(ActionHorseDrink, Config.Prompt.HorseDrink)
+    PromptSetText(ActionHorseDrink, CreateVarString(10, 'LITERAL_STRING', "Drink"))
+    PromptSetEnabled(ActionHorseDrink, 1)
+    PromptSetVisible(ActionHorseDrink, 1)
+    PromptSetStandardMode(ActionHorseDrink, 1)
+    PromptSetGroup(ActionHorseDrink, DrinkPrompt)
+    PromptRegisterEnd(ActionHorseDrink)
+
+    ActionHorseGraze = PromptRegisterBegin()
+    PromptSetControlAction(ActionHorseGraze, Config.Prompt.HorseGraze)
+    PromptSetText(ActionHorseGraze, CreateVarString(10, 'LITERAL_STRING', "Graze"))
+    PromptSetEnabled(ActionHorseGraze, 1)
+    PromptSetVisible(ActionHorseGraze, 1)
+    PromptSetStandardMode(ActionHorseGraze, 1)
+    PromptSetGroup(ActionHorseGraze, GrazePrompt)
+    PromptRegisterEnd(ActionHorseGraze)
+end
+
+local function GetNearestInteractableObject(forward)
+    if not Config.ObjectActionList then return nil, nil end
+    for _, v in pairs(Config.ObjectActionList) do
+        local obj = GetClosestObjectOfType(forward.x, forward.y, forward.z, 0.9, v[1], 0, 1, 1)
+        if obj ~= 0 then return obj, v[2] end
+    end
+    return nil, nil
+end
+
+local function PerformHorseAction(thorse, anim, obj, forward)
+    objectInteract = true
+    Citizen.InvokeNative(0xED27560703F37258, PlayerPedId()) -- TaskStopLeadingHorse
+    Wait(500)
+
+    if obj then
+        TaskGoStraightToCoord(thorse, forward.x, forward.y, forward.z, 1.0, -1, -1, 0)
+        Wait(1000)
+        TaskTurnPedToFaceEntity(thorse, obj, 1000)
+        Wait(1000)
+    end
+
+    RequestAnimDict(anim.dict)
+    while not HasAnimDictLoaded(anim.dict) do Wait(1) end
+
+    local timer = (anim.duration or 10) * 1000
+    TaskPlayAnim(thorse, anim.dict, anim.anim, 1.0, 1.0, timer, 1, 0, 1, 0, 0, 0, 0)
+    Wait(timer)
+
+    if obj then ClearPedTasks(thorse) end
+
+    -- Boost Stats
+    local horseHealth = Citizen.InvokeNative(0x36731AC041289BB1, thorse, 0) -- GetAttributeCoreValue
+    local horseStamina = Citizen.InvokeNative(0x36731AC041289BB1, thorse, 1)
+    local boostH = (Config.BoostAction and Config.BoostAction.Health) or 10
+    local boostS = (Config.BoostAction and Config.BoostAction.Stamina) or 10
+
+    Citizen.InvokeNative(0xC6258F41D86676E0, thorse, 0, horseHealth + boostH) -- _SET_ATTRIBUTE_CORE_VALUE
+    Citizen.InvokeNative(0xC6258F41D86676E0, thorse, 1, horseStamina + boostS)
+
+    objectInteract = false
+end
+
+CreateThread(function()
+    SetupActionPrompt()
+    -- Wait for login
+    -- repeat Wait(1000) until LocalPlayer.state.isLoggedIn or RSGCore.Functions.GetPlayerData() 
+    
+    while true do
+        local sleep = 1000
+        local ped = PlayerPedId()
+        
+        if DoesEntityExist(ped) and not objectInteract then
+            if Citizen.InvokeNative(0xEFC4303DDC6E60D3, ped) then -- IsPedLeadingHorse
+                local thorse = Citizen.InvokeNative(0xED1F514AF4732258, ped) -- GetLedHorseFromPed
+                
+                if thorse and DoesEntityExist(thorse) then
+                    sleep = 1
+                    
+                    if IsEntityInWater(thorse) then
+                        -- Handle Water
+                         if IsPedStill(thorse) and not IsPedSwimming(thorse) then
+                            local label = CreateVarString(10, 'LITERAL_STRING', "Horse")
+                            PromptSetActiveGroupThisFrame(DrinkPrompt, label)
+                            if Citizen.InvokeNative(0xC92AC953F0A982AE, ActionHorseDrink) then -- PromptHasHoldModeCompleted
+                                PerformHorseAction(thorse, Config.Anim.Drink, nil, nil)
+                            end
+                         end
+                    elseif Config.ObjectAction then
+                        -- Handle Object
+                        local forward = GetOffsetFromEntityInWorldCoords(thorse, 0.0, 0.8, -0.5)
+                        local obj, type = GetNearestInteractableObject(forward)
+                        
+                        if obj then
+                            local promptGroup, action, anim
+                            if type == "drink" then
+                                promptGroup, action = DrinkPrompt, ActionHorseDrink
+                                anim = Config.Anim.Drink2
+                            elseif type == "feed" then
+                                promptGroup, action = GrazePrompt, ActionHorseGraze
+                                anim = Config.Anim.Graze
+                            end
+                            
+                            if action then
+                                local label = CreateVarString(10, 'LITERAL_STRING', "Horse")
+                                PromptSetActiveGroupThisFrame(promptGroup, label)
+                                if Citizen.InvokeNative(0xC92AC953F0A982AE, action) then
+                                    PerformHorseAction(thorse, anim, obj, forward)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        Wait(sleep)
+    end
+end)
+
+
+-- Brush Horse
 -- Brush Horse
 RegisterNetEvent('rsg-stable:client:BrushHorse', function(data)
     local entity = data and data.entity
-    if not entity or not DoesEntityExist(entity) then 
-        entity = SpawnplayerHorse
-    end
-    
-    if not entity or not DoesEntityExist(entity) then
-        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse found!', duration = 3000})
-        return
-    end
+    if not entity or not DoesEntityExist(entity) then entity = SpawnplayerHorse end
+    if not entity or not DoesEntityExist(entity) then return TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse found!', duration = 3000}) end
     
     local ped = PlayerPedId()
     local brushDuration = (Config.HorseCare and Config.HorseCare.BrushDuration) or 5000
-    
-    -- Play brush animation on player
     TriggerEvent('ox_lib:notify', {type = 'inform', description = 'Brushing horse...', duration = brushDuration})
+
+    -- Use Native Interaction (Works mounted and on foot)
+    -- TaskAnimalInteraction(ped, entity, interactionHash, propHash, p4)
+    local interaction = GetHashKey("Interaction_Brush")
+    local prop = GetHashKey("p_brushHorse02x")
+    Citizen.InvokeNative(0xCD181A959CFDD7F4, ped, entity, interaction, prop, 0)
     
-    -- Make player face horse
-    TaskTurnPedToFaceEntity(ped, entity, brushDuration)
-    Wait(500)
-    
-    -- Use native brush scenario
-    TaskStartScenarioInPlace(ped, GetHashKey("WORLD_HUMAN_HORSE_CARE"), brushDuration, true, false, false, false)
-    
-    -- Wait for animation
     Wait(brushDuration)
     
-    -- Clear animation
-    ClearPedTasksImmediately(ped)
-    
-    -- Apply brush effect to horse (natives handle the visual)
+    -- Visual Clean Effect
     Citizen.InvokeNative(0x7B83EFB6C1B0E68D, entity) -- _HORSE_BRUSH_CLEAN
+    ClearPedEnvDirt(entity) 
     
     TriggerEvent('ox_lib:notify', {type = 'success', description = 'Horse brushed!', duration = 3000})
 end)
@@ -604,23 +837,15 @@ end)
 -- Feed Horse
 RegisterNetEvent('rsg-stable:client:FeedHorse', function(data)
     local entity = data and data.entity
-    if not entity or not DoesEntityExist(entity) then 
-        entity = SpawnplayerHorse
-    end
+    if not entity or not DoesEntityExist(entity) then entity = SpawnplayerHorse end
+    if not entity or not DoesEntityExist(entity) then return TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse found!', duration = 3000}) end
     
-    if not entity or not DoesEntityExist(entity) then
-        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse found!', duration = 3000})
-        return
-    end
-    
-    -- Build menu of feed items player has
     local feedItems = (Config.HorseCare and Config.HorseCare.FeedItems) or {}
     local menuOptions = {}
     
     for itemName, healthRestore in pairs(feedItems) do
-        -- Check if player has this item (via server callback)
         menuOptions[#menuOptions+1] = {
-            title = itemName:gsub("^%l", string.upper), -- Capitalize
+            title = itemName:gsub("^%l", string.upper),
             description = 'Restores ' .. healthRestore .. ' health',
             icon = 'carrot',
             onSelect = function()
@@ -629,59 +854,36 @@ RegisterNetEvent('rsg-stable:client:FeedHorse', function(data)
         }
     end
     
-    if #menuOptions == 0 then
-        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No feed items configured!', duration = 3000})
-        return
-    end
+    if #menuOptions == 0 then return TriggerEvent('ox_lib:notify', {type = 'error', description = 'No feed items!', duration = 3000}) end
     
-    -- Show ox_lib context menu
-    exports['ox_lib']:registerContext({
-        id = 'horse_feed_menu',
-        title = 'Feed Horse',
-        options = menuOptions
-    })
+    exports['ox_lib']:registerContext({ id = 'horse_feed_menu', title = 'Feed Horse', options = menuOptions })
     exports['ox_lib']:showContext('horse_feed_menu')
 end)
 
--- Apply feed effect (called from server after item removed)
+-- Apply feed effect
 RegisterNetEvent('rsg-stable:client:ApplyFeedEffect', function(horseNetId, healthRestore, itemName)
     local horse = NetworkGetEntityFromNetworkId(horseNetId)
-    if not horse or not DoesEntityExist(horse) then
-        horse = SpawnplayerHorse
-    end
-    
+    if not horse then horse = SpawnplayerHorse end
     if not horse or not DoesEntityExist(horse) then return end
     
     local ped = PlayerPedId()
     
-    -- Play feed animation
-    TaskTurnPedToFaceEntity(ped, horse, 1000)
-    Wait(500)
+    -- Use Native Interaction if possible, else fallback
+    -- Attempting "Interaction_Food" with Apple prop
+    local interaction = GetHashKey("Interaction_Food") 
+    local prop = GetHashKey("p_apple01x") -- Default to apple visual
     
-    -- Play a quick animation (like giving item)
-    local animDict = "amb_rest_drunk@world_human_seat_chair_eating_generic@male_b@idle_b"
-    RequestAnimDict(animDict)
-    local timeout = 0
-    while not HasAnimDictLoaded(animDict) and timeout < 50 do
-        Wait(100)
-        timeout = timeout + 1
+    Citizen.InvokeNative(0xCD181A959CFDD7F4, ped, horse, interaction, prop, 0)
+    
+    Wait(3000)
+    
+    -- Update Stats
+    local hp = GetEntityHealth(horse)
+    local max = GetEntityMaxHealth(horse)
+    SetEntityHealth(horse, math.min(hp + healthRestore, max))
+    if itemName == "horse_stimulant" then
+         Citizen.InvokeNative(0xC6258F41D86676E0, horse, 1, 100.0) -- Restore stamina
     end
-    
-    if HasAnimDictLoaded(animDict) then
-        TaskPlayAnim(ped, animDict, "idle_d", 8.0, -8.0, 2000, 0, 0, false, false, false)
-        Wait(2000)
-    end
-    
-    ClearPedTasksImmediately(ped)
-    
-    -- Apply health to horse using native
-    local currentHealth = GetEntityHealth(horse)
-    local maxHealth = GetEntityMaxHealth(horse)
-    local newHealth = math.min(currentHealth + healthRestore, maxHealth)
-    SetEntityHealth(horse, newHealth)
-    
-    -- Trigger native horse feed effect
-    Citizen.InvokeNative(0xADB004C97F610C50, horse, GetHashKey("PERS_HUNGER"), 100.0) -- Set hunger attribute
 end)
 
 -- Ride Restriction for Young Horses

@@ -7,13 +7,41 @@ Config.SellPrice = 50 -- Amount player receives when selling a horse
 Config.HorseCare = {
     BrushDuration = 5000, -- Brush animation duration in ms
     FeedItems = { -- Items that can be fed to horses (item name = health restore amount)
-        ['apple'] = 10,
-        ['carrot'] = 15,
-        ['hay'] = 20,
-        ['sugar'] = 5,
-        ['oats'] = 25,
+        ['horse_apple'] = 10,
+        ['horse_carrot'] = 15,
+        ['haysnack'] = 20,
+        ['sugarcube'] = 5,
+        ['horse_stimulant'] = 50, -- Boosts stamina mostly? handled in logic
         ['horsemeal'] = 30,
     }
+}
+
+Config.ObjectAction = true -- Enable graze/drink prompts nearby objects
+
+Config.BoostAction = {
+    Health = 20,
+    Stamina = 20
+}
+
+Config.Prompt = {
+    HorseDrink = 0xD8CF0C95,
+    HorseGraze = 0xD8CF0C95,
+    HorseLay = 0xD8CF0C95,
+    HorsePlay = 0x620A6C5E,
+    HorseSaddleBag = 0xC7B5340A,
+    HorseBrush = 0x63A38F2C,
+}
+
+Config.ObjectActionList = {
+    [1] = {`p_watertrough02x`, 'drink'},
+    [2] = {`p_watertrough01x`, 'drink'},
+    [3] = {`p_haypile01x`, 'feed'},
+}
+
+Config.Anim = {
+    Drink  = { dict = 'amb_creature_mammal@world_horse_drink_ground@base', anim = 'base',   duration = 20 }, --duration in seconds
+    Drink2 = { dict = 'amb_creature_mammal@prop_horse_drink_trough@idle0', anim = 'idle_a', duration = 20 },
+    Graze  = { dict = 'amb_creature_mammal@world_horse_grazing@idle',      anim = 'idle_a', duration = 20 }
 }
 Config.Training = {
     MaxIQ = 100,

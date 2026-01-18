@@ -3,6 +3,7 @@ local RSGCore = exports['rsg-core']:GetCoreObject()
 
 local SelectedHorseId = {}
 local Horses
+local SaddlebagInUse = {} -- Track which saddlebags are currently open { [stashId] = playerId }
 
 -- Resource name check (optional warning)
 CreateThread(function()
@@ -457,6 +458,48 @@ RegisterNetEvent("rsg-stable:server:FeedHorse", function(itemName, horseNetId)
     TriggerClientEvent('ox_lib:notify', src, {type = 'success', description = 'Fed horse with ' .. itemName .. '!', duration = 3000})
 end)
 
+-- Saddlebag Lock System - Check if saddlebag is available
+RegisterNetEvent("rsg-stable:server:CheckSaddlebag", function(stashId)
+    local src = source
+    
+    if SaddlebagInUse[stashId] then
+        local usingPlayer = SaddlebagInUse[stashId]
+        if usingPlayer ~= src then
+            -- Someone else is using it
+            local playerName = GetPlayerName(usingPlayer) or "Another player"
+            TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = playerName .. ' is already using this saddlebag!', duration = 5000})
+            TriggerClientEvent('rsg-stable:client:SaddlebagDenied', src)
+            return
+        end
+    end
+    
+    -- Lock the saddlebag for this player
+    SaddlebagInUse[stashId] = src
+    TriggerClientEvent('rsg-stable:client:SaddlebagApproved', src, stashId)
+end)
+
+-- Saddlebag Lock System - Release lock when closed
+RegisterNetEvent("rsg-stable:server:CloseSaddlebag", function(stashId)
+    local src = source
+    
+    -- Only release if this player owns the lock
+    if SaddlebagInUse[stashId] == src then
+        SaddlebagInUse[stashId] = nil
+    end
+end)
+
+-- Clean up saddlebag locks when player disconnects
+AddEventHandler('playerDropped', function(reason)
+    local src = source
+    
+    -- Remove all locks held by this player
+    for stashId, playerId in pairs(SaddlebagInUse) do
+        if playerId == src then
+            SaddlebagInUse[stashId] = nil
+        end
+    end
+end)
+
 -- Create database table if not exists
 local function CreateDatabaseIfNotExists()
     MySQL.query.await([[
@@ -671,5 +714,71 @@ RegisterNetEvent('rsg-stable:server:ChargeCustomization', function(amount)
         TriggerClientEvent('rsg-core:notify', src, 'Paid $'..amount..' for customization services.', 'success')
     else
         TriggerClientEvent('rsg-core:notify', src, 'You could not afford the customization fee ($'..amount..').', 'error')
+    end
+end)
+
+-- Usable Items for Horse Care
+
+-- brush horse
+RSGCore.Functions.CreateUseableItem('horse_brush', function(source, item)
+    TriggerClientEvent('rsg-horses:client:playerbrushhorse', source, item.name)
+end)
+
+-- player horselantern
+RSGCore.Functions.CreateUseableItem('horse_lantern', function(source, item)
+    TriggerClientEvent('rsg-horses:client:equipHorseLantern', source, item.name)
+end)
+
+ -- horse stimulant
+ RSGCore.Functions.CreateUseableItem('horse_stimulant', function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if Player.Functions.RemoveItem(item.name, 1, item.slot) then
+        TriggerClientEvent('rsg-horses:client:playerfeedhorse', source, item.name)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', source, RSGCore.Shared.Items[item.name], "remove")
+    end
+end)
+
+-- feed horse carrot
+RSGCore.Functions.CreateUseableItem('horse_carrot', function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if Player.Functions.RemoveItem(item.name, 1, item.slot) then
+        TriggerClientEvent('rsg-horses:client:playerfeedhorse', source, item.name)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', source, RSGCore.Shared.Items[item.name], "remove")
+    end
+end)
+
+ -- feed apple
+ RSGCore.Functions.CreateUseableItem('horse_apple', function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if Player.Functions.RemoveItem(item.name, 1, item.slot) then
+        TriggerClientEvent('rsg-horses:client:playerfeedhorse', source, item.name)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', source, RSGCore.Shared.Items[item.name], "remove")
+    end
+end)
+
+-- feed horse sugarcube
+RSGCore.Functions.CreateUseableItem('sugarcube', function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if Player.Functions.RemoveItem(item.name, 1, item.slot) then
+        TriggerClientEvent('rsg-horses:client:playerfeedhorse', source, item.name)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', source, RSGCore.Shared.Items[item.name], "remove")
+    end
+end)
+
+-- feed horse haysnack
+RSGCore.Functions.CreateUseableItem('haysnack', function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if Player.Functions.RemoveItem(item.name, 1, item.slot) then
+        TriggerClientEvent('rsg-horses:client:playerfeedhorse', source, item.name)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', source, RSGCore.Shared.Items[item.name], "remove")
+    end
+end)
+
+-- feed horse horsemeal
+RSGCore.Functions.CreateUseableItem('horsemeal', function(source, item)
+    local Player = RSGCore.Functions.GetPlayer(source)
+    if Player.Functions.RemoveItem(item.name, 1, item.slot) then
+        TriggerClientEvent('rsg-horses:client:playerfeedhorse', source, item.name)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', source, RSGCore.Shared.Items[item.name], "remove")
     end
 end)
