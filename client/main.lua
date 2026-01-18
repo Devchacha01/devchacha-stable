@@ -588,33 +588,7 @@ RegisterNetEvent('rsg-stable:client:SaddlebagDenied', function()
     -- Lock denied, nothing to do (notification sent from server)
 end)
 
-local function GetClosestHorse()
-    local ped = PlayerPedId()
-    
-    -- Check if mounted
-    if IsPedOnMount(ped) then
-        return GetMount(ped)
-    end
-    
-    -- Check detection
-    local coords = GetEntityCoords(ped)
-    local peds = RSGCore.Functions.GetPeds({ignoreList = {ped, cache.ped}})
-    local closestHorse = nil
-    local shortestDist = 3.0 -- Interaction range
-    
-    for _, entity in pairs(peds) do
-        local dist = #(coords - GetEntityCoords(entity))
-        if dist < shortestDist then
-            local model = GetEntityModel(entity)
-            if Citizen.InvokeNative(0x772A1969F649E902, model) then -- IsThisModelAHorse
-                closestHorse = entity
-                shortestDist = dist
-            end
-        end
-    end
-    
-    return closestHorse
-end
+
 
 -- Helper for getting closest horse (for items)
 local function GetClosestHorse()
