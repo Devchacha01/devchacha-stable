@@ -217,11 +217,13 @@ local function OpenStable()
     if not alreadySentShopData then
         SendNUIMessage({
             action = "show",
+            location = currentStableLocation,
             shopData = getShopData()
         })
     else
         SendNUIMessage({
-            action = "show"
+            action = "show",
+            location = currentStableLocation
         })
     end
     TriggerServerEvent("rsg-stable:AskForMyHorses")
@@ -1119,6 +1121,11 @@ end)
 
 RegisterNUICallback("respondTransfer", function(data, cb)
     TriggerServerEvent('rsg-stable:server:respondTransfer', data.transferId, data.accepted)
+    if cb then cb('ok') end
+end)
+
+RegisterNUICallback("notify", function(data, cb)
+    TriggerEvent('ox_lib:notify', {type = data.type, description = data.msg, duration = 5000})
     if cb then cb('ok') end
 end)
 

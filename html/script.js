@@ -24,8 +24,11 @@ function getItemPrice(val) {
 }
 
 
+var currentLocation = "Valentine"; // Default
+
 window.addEventListener('message', function (event) {
     if (event.data.action == "show") {
+        currentLocation = event.data.location || "Valentine";
         hasCustomized = false;
         initialComponents = {};
         currentComponents = {};
@@ -181,7 +184,7 @@ window.addEventListener('message', function (event) {
 
                         <div class="row" style="margin: 0; margin-bottom: 10px;">
                             <div class="col s12 center-align">
-                                <span style="color: ${genderColor}; font-size: 2.5rem; font-weight: bold;">${genderSymbol}</span>
+                                <span style="color: ${genderColor}; font-size: 3.5rem; font-weight: 900; text-shadow: 2px 2px 4px #000;">${genderSymbol}</span>
                                 <div style="font-size: 0.8rem; color: #b0b0b0; margin-top: -5px;">${tab.is_fertile ? '<span style="color:#4CAF50;">Fertile</span>' : '<span style="color:#F44336;">Infertile</span>'}</div>
                             </div>
                         </div>
@@ -200,7 +203,7 @@ window.addEventListener('message', function (event) {
 
                     </div>
                     <div class="collapsible-body col s12 panel item" id="${HorseID}">
-                        <div class="col s4 panel-col item" onclick="SelectHorse(${HorseID})">
+                        <div class="col s4 panel-col item" onclick="SelectHorse(${HorseID}, '${stableLoc}')">
                             <h6 class="grey-text title">Take Out</h6>
                         </div>
                         <div class="col s4 panel-col item" onclick="TransferHorse(${HorseID}, '${HorseName}')">
@@ -246,7 +249,18 @@ function confirm(shouldSpawn) {
 
 // ...
 
-function SelectHorse(horseId) {
+function SelectHorse(horseId, stableLoc) {
+    // Check if horse is in current stable
+    if (stableLoc && stableLoc !== currentLocation) {
+        // Trigger notification via Lua
+        $.post('https://devchacha-stable/notify', JSON.stringify({
+            type: 'error',
+            msg: `Your horse is not here! It is stabled at ${stableLoc}.`
+        }));
+        confirm(false); // Close the UI
+        return;
+    }
+
     $.post('https://devchacha-stable/selectHorse', JSON.stringify({ horseID: horseId }));
     // Auto-confirm/close to take out horse with SPAWN = true
     confirm(true);
