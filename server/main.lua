@@ -238,13 +238,13 @@ RegisterNetEvent("rsg-stable:server:createTransfer", function(data)
     local price = data.price or 0
     
     if not horseId or not targetServerId then
-        TriggerClientEvent('rsg-core:notify', src, 'Invalid transfer data!', 'error')
+        TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'Invalid transfer data!', duration = 5000})
         return
     end
     
     local TargetPlayer = GetPlayer(targetServerId)
     if not TargetPlayer then
-        TriggerClientEvent('rsg-core:notify', src, 'Target player not found!', 'error')
+        TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'Target player not found!', duration = 5000})
         return
     end
     
@@ -252,14 +252,14 @@ RegisterNetEvent("rsg-stable:server:createTransfer", function(data)
     local targetCid = TargetPlayer.PlayerData.citizenid
     
     if ownerCid == targetCid then
-        TriggerClientEvent('rsg-core:notify', src, 'Cannot transfer to yourself!', 'error')
+        TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'Cannot transfer to yourself!', duration = 5000})
         return
     end
     
     -- Verify ownership
     MySQL.query('SELECT * FROM horses WHERE id = ? AND cid = ?', {horseId, ownerCid}, function(result)
         if not result or #result == 0 then
-            TriggerClientEvent('rsg-core:notify', src, 'You do not own this horse!', 'error')
+            TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'You do not own this horse!', duration = 5000})
             return
         end
         
@@ -270,7 +270,7 @@ RegisterNetEvent("rsg-stable:server:createTransfer", function(data)
             local targetCount = countResult and countResult[1] and countResult[1].count or 0
             
             if targetCount >= Config.MaxNumberOfHorses then
-                TriggerClientEvent('rsg-core:notify', src, 'Target player has too many horses!', 'error')
+                TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'Target player has too many horses!', duration = 5000})
                 return
             end
             
@@ -282,8 +282,8 @@ RegisterNetEvent("rsg-stable:server:createTransfer", function(data)
                 horseId, ownerCid, targetCid, price
             }, function(transferId)
                 if transferId then
-                    TriggerClientEvent('rsg-core:notify', src, 'Transfer offer sent!', 'success')
-                    TriggerClientEvent('rsg-core:notify', targetServerId, 'You received a horse transfer offer for: ' .. horse.name, 'success')
+                    TriggerClientEvent('ox_lib:notify', src, {type = 'success', description = 'Transfer offer sent to player!', duration = 5000})
+                    TriggerClientEvent('ox_lib:notify', targetServerId, {type = 'success', description = 'You received a horse transfer offer for: ' .. horse.name, duration = 8000})
                 end
             end)
         end)
