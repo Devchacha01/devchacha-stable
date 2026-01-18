@@ -1,6 +1,20 @@
 Config = {}
 
-Config.MaxNumberOfHorses = 3
+Config.MaxNumberOfHorses = 5
+Config.SellPrice = 50 -- Amount player receives when selling a horse
+
+-- Horse Care Settings
+Config.HorseCare = {
+    BrushDuration = 5000, -- Brush animation duration in ms
+    FeedItems = { -- Items that can be fed to horses (item name = health restore amount)
+        ['apple'] = 10,
+        ['carrot'] = 15,
+        ['hay'] = 20,
+        ['sugar'] = 5,
+        ['oats'] = 25,
+        ['horsemeal'] = 30,
+    }
+}
 Config.Training = {
     MaxIQ = 100,
     MaxXP = 1000,

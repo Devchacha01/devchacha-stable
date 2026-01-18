@@ -10,7 +10,6 @@ sex = nil
 zoom = 4.0
 offset = 0.2
 DeleteeEntity = true
-local pendingTransferHorse = nil
 
 local InterP = true
 local adding = true
@@ -483,7 +482,7 @@ local function InitiateHorse(atCoords)
     
     if not isVehicle then
         SetPedConfigFlag(entity, 297, true)
-        -- Add Interations (Train Horse) - Only for horses
+        -- Add Interations (Train Horse, Brush, Feed, Saddlebag) - Only for horses
         exports['rsg-target']:AddTargetEntity(entity, {
             options = {
                 {
@@ -501,6 +500,24 @@ local function InitiateHorse(atCoords)
                     canInteract = function(entity)
                         -- Allow interaction if it has a horseId decorator (owned horse)
                         return DecorGetInt(entity, "horseId") ~= 0 and HasSaddlebag()
+                    end,
+                },
+                {
+                    type = "client",
+                    event = "rsg-stable:client:BrushHorse",
+                    icon = "fas fa-hand-sparkles",
+                    label = "Brush Horse",
+                    canInteract = function(entity)
+                        return DecorGetInt(entity, "horseId") ~= 0
+                    end,
+                },
+                {
+                    type = "client",
+                    event = "rsg-stable:client:FeedHorse",
+                    icon = "fas fa-carrot",
+                    label = "Feed Horse",
+                    canInteract = function(entity)
+                        return DecorGetInt(entity, "horseId") ~= 0
                     end,
                 },
             },
@@ -521,41 +538,150 @@ RegisterNetEvent('rsg-stable:client:TrainHorse', function()
 end)
 
 RegisterNetEvent('rsg-stable:client:OpenSaddlebag', function(data)
-    print("DEBUG: OpenSaddlebag triggered")
     -- rsg-target passes data which includes .entity
     local entity = data and data.entity
-    if not entity then 
-        print("DEBUG: No entity found in data")
-        return 
-    end
+    if not entity then return end
 
     local horseId = DecorGetInt(entity, "horseId")
-    print("DEBUG: Entity found, horseId decorator:", horseId)
 
     if not horseId or horseId == 0 then
         -- Fallback to global if decorating failed or old horse
         horseId = IdMyHorse
-        print("DEBUG: Fallback to global IdMyHorse:", IdMyHorse)
     end
 
     if not horseId then 
-        TriggerEvent('rsg-core:notify', 'Cannot identify this horse.', 'error')
-        print("DEBUG: Failed to identify horseId")
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'Cannot identify this horse.', duration = 5000})
         return 
     end
     
     local stashId = "stable_" .. horseId
-    print("DEBUG: Opening stash:", stashId)
     
-    -- Try triggering the inventory open event
-    -- Try triggering the custom stable stash open event
-    -- Corrected trigger for rsg-inventory
     TriggerServerEvent("rsg-inventory:server:OpenInventory", stashId, {
         maxweight = 40000,
         slots = 30,
         label = "Saddlebag"
     })
     TriggerEvent("rsg-inventory:client:SetCurrentStash", stashId)
+end)
+
+-- Brush Horse
+RegisterNetEvent('rsg-stable:client:BrushHorse', function(data)
+    local entity = data and data.entity
+    if not entity or not DoesEntityExist(entity) then 
+        entity = SpawnplayerHorse
+    end
+    
+    if not entity or not DoesEntityExist(entity) then
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse found!', duration = 3000})
+        return
+    end
+    
+    local ped = PlayerPedId()
+    local brushDuration = (Config.HorseCare and Config.HorseCare.BrushDuration) or 5000
+    
+    -- Play brush animation on player
+    TriggerEvent('ox_lib:notify', {type = 'inform', description = 'Brushing horse...', duration = brushDuration})
+    
+    -- Make player face horse
+    TaskTurnPedToFaceEntity(ped, entity, brushDuration)
+    Wait(500)
+    
+    -- Use native brush scenario
+    TaskStartScenarioInPlace(ped, GetHashKey("WORLD_HUMAN_HORSE_CARE"), brushDuration, true, false, false, false)
+    
+    -- Wait for animation
+    Wait(brushDuration)
+    
+    -- Clear animation
+    ClearPedTasksImmediately(ped)
+    
+    -- Apply brush effect to horse (natives handle the visual)
+    Citizen.InvokeNative(0x7B83EFB6C1B0E68D, entity) -- _HORSE_BRUSH_CLEAN
+    
+    TriggerEvent('ox_lib:notify', {type = 'success', description = 'Horse brushed!', duration = 3000})
+end)
+
+-- Feed Horse
+RegisterNetEvent('rsg-stable:client:FeedHorse', function(data)
+    local entity = data and data.entity
+    if not entity or not DoesEntityExist(entity) then 
+        entity = SpawnplayerHorse
+    end
+    
+    if not entity or not DoesEntityExist(entity) then
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No horse found!', duration = 3000})
+        return
+    end
+    
+    -- Build menu of feed items player has
+    local feedItems = (Config.HorseCare and Config.HorseCare.FeedItems) or {}
+    local menuOptions = {}
+    
+    for itemName, healthRestore in pairs(feedItems) do
+        -- Check if player has this item (via server callback)
+        menuOptions[#menuOptions+1] = {
+            title = itemName:gsub("^%l", string.upper), -- Capitalize
+            description = 'Restores ' .. healthRestore .. ' health',
+            icon = 'carrot',
+            onSelect = function()
+                TriggerServerEvent('rsg-stable:server:FeedHorse', itemName, NetworkGetNetworkIdFromEntity(entity))
+            end
+        }
+    end
+    
+    if #menuOptions == 0 then
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'No feed items configured!', duration = 3000})
+        return
+    end
+    
+    -- Show ox_lib context menu
+    exports['ox_lib']:registerContext({
+        id = 'horse_feed_menu',
+        title = 'Feed Horse',
+        options = menuOptions
+    })
+    exports['ox_lib']:showContext('horse_feed_menu')
+end)
+
+-- Apply feed effect (called from server after item removed)
+RegisterNetEvent('rsg-stable:client:ApplyFeedEffect', function(horseNetId, healthRestore, itemName)
+    local horse = NetworkGetEntityFromNetworkId(horseNetId)
+    if not horse or not DoesEntityExist(horse) then
+        horse = SpawnplayerHorse
+    end
+    
+    if not horse or not DoesEntityExist(horse) then return end
+    
+    local ped = PlayerPedId()
+    
+    -- Play feed animation
+    TaskTurnPedToFaceEntity(ped, horse, 1000)
+    Wait(500)
+    
+    -- Play a quick animation (like giving item)
+    local animDict = "amb_rest_drunk@world_human_seat_chair_eating_generic@male_b@idle_b"
+    RequestAnimDict(animDict)
+    local timeout = 0
+    while not HasAnimDictLoaded(animDict) and timeout < 50 do
+        Wait(100)
+        timeout = timeout + 1
+    end
+    
+    if HasAnimDictLoaded(animDict) then
+        TaskPlayAnim(ped, animDict, "idle_d", 8.0, -8.0, 2000, 0, 0, false, false, false)
+        Wait(2000)
+    end
+    
+    ClearPedTasksImmediately(ped)
+    
+    -- Apply health to horse using native
+    local currentHealth = GetEntityHealth(horse)
+    local maxHealth = GetEntityMaxHealth(horse)
+    local newHealth = math.min(currentHealth + healthRestore, maxHealth)
+    SetEntityHealth(horse, newHealth)
+    
+    -- Trigger native horse feed effect
+    Citizen.InvokeNative(0xADB004C97F610C50, horse, GetHashKey("PERS_HUNGER"), 100.0) -- Set hunger attribute
 end)
 
 -- Ride Restriction for Young Horses
@@ -910,6 +1036,52 @@ RegisterNUICallback("selectHorse", function(data)
 end)
 
 
+RegisterNUICallback("confirmSellHorse", function(data, cb)
+    local horseID = tonumber(data.horseID)
+    local sellPrice = Config.SellPrice or 50
+    
+    -- Close UI temporarily to show dialog
+    SetNuiFocus(false, false)
+    SendNUIMessage({ action = "hide" })
+    
+    -- Use ox_lib input dialog for confirmation via exports
+    local input = exports['ox_lib']:inputDialog('Sell Horse', {
+        {type = 'input', label = 'Type "SELL" to confirm selling this horse for $' .. sellPrice, required = true}
+    })
+    
+    if input and input[1] and string.upper(input[1]) == "SELL" then
+        -- Confirmed - proceed with sale
+        if showroomHorse_entity and DoesEntityExist(showroomHorse_entity) then
+            DeleteEntity(showroomHorse_entity)
+        end
+        TriggerServerEvent("rsg-stable:SellHorseWithId", horseID)
+        TriggerServerEvent("rsg-stable:AskForMyHorses")
+        alreadySentShopData = false
+        Wait(500)
+        
+        -- Re-open stable UI
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = "show",
+            location = currentStableLocation,
+            shopData = getShopData()
+        })
+        TriggerServerEvent("rsg-stable:AskForMyHorses")
+    else
+        -- Cancelled - re-open stable UI
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'Sale cancelled.', duration = 3000})
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = "show",
+            location = currentStableLocation,
+            shopData = getShopData()
+        })
+        TriggerServerEvent("rsg-stable:AskForMyHorses")
+    end
+    
+    if cb then cb('ok') end
+end)
+
 RegisterNUICallback("sellHorse", function(data)
     if showroomHorse_entity and DoesEntityExist(showroomHorse_entity) then
         DeleteEntity(showroomHorse_entity)
@@ -1010,6 +1182,17 @@ RegisterNUICallback("loadMyHorse", function(data)
         MyHorse_entity = nil
     end
     
+    -- RESET customization variables when loading a different horse
+    -- This prevents customization from one horse bleeding into another
+    SaddlesUsing = nil
+    SaddleclothsUsing = nil
+    StirrupsUsing = nil
+    BagsUsing = nil
+    ManesUsing = nil
+    HorseTailsUsing = nil
+    AcsHornUsing = nil
+    AcsLuggageUsing = nil
+    
     -- Enable Customization for owned horses
     inCustomization = true
 
@@ -1077,13 +1260,10 @@ RegisterNUICallback("SelectHorse", function(data)
     -- Deprecated: Use 'selectHorse' (lowercase) which handles server event correctly
 end)
 
-RegisterNUICallback("transferHorse", function(data)
-    TriggerServerEvent("rsg-stable:TransferHorse", data)
-end)
-
-
-
-RegisterNUICallback("startTransfer", function(data)
+RegisterNUICallback("transferHorse", function(data, cb)
+    local horseID = tonumber(data.horseID)
+    local horseName = data.horseName or "Unknown"
+    
     -- Close the stable UI first
     SetNuiFocus(false, false)
     SendNUIMessage({ action = "hide" })
@@ -1092,72 +1272,44 @@ RegisterNUICallback("startTransfer", function(data)
     if showroomHorse_entity then DeleteEntity(showroomHorse_entity) showroomHorse_entity = nil end
     if MyHorse_entity then DeleteEntity(MyHorse_entity) MyHorse_entity = nil end
     DestroyAllCams(true)
-    CloseStable()
+    RenderScriptCams(false, false, 0, true, true)
     
     -- Open Input Dialog
-    local input = exports.ox_lib:inputDialog("Transfer Horse: " .. (data.horseName or "Unknown"), {
-        { type = 'number', label = "Player ID (Server ID)", required = true },
-        { type = 'number', label = "Price (0 for free)", default = 0 }
+    local input = exports['ox_lib']:inputDialog("Transfer Horse: " .. horseName, {
+        { type = 'number', label = "Enter Player Server ID", required = true },
+        { type = 'number', label = "Price (0 for free transfer)", default = 0 }
     })
     
-    if not input then return end
+    if not input then 
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'Transfer cancelled.', duration = 3000})
+        -- Make absolutely sure UI is closed
+        SetNuiFocus(false, false)
+        SendNUIMessage({ action = "hide" })
+        if cb then cb('ok') end
+        return 
+    end
     
     local targetId = tonumber(input[1])
     local price = tonumber(input[2]) or 0
     
-    if not targetId then return end
+    if not targetId then 
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'Invalid Player ID.', duration = 3000})
+        if cb then cb('ok') end
+        return 
+    end
     
     TriggerServerEvent('rsg-stable:server:createTransfer', {
-        horseID = data.horseID,
+        horseID = horseID,
         targetServerId = targetId,
         price = price
     })
-end)
-
-RegisterNUICallback("getPendingTransfers", function(data, cb)
-    TriggerServerEvent('rsg-stable:server:getPendingTransfers')
-    if cb then cb('ok') end
-end)
-
-RegisterNUICallback("respondTransfer", function(data, cb)
-    TriggerServerEvent('rsg-stable:server:respondTransfer', data.transferId, data.accepted)
+    
     if cb then cb('ok') end
 end)
 
 RegisterNUICallback("notify", function(data, cb)
     TriggerEvent('ox_lib:notify', {type = data.type, description = data.msg, duration = 5000})
     if cb then cb('ok') end
-end)
-
-RegisterNetEvent('rsg-stable:client:receivePendingTransfers', function(transfers)
-    SendNUIMessage({
-        action = "updatePendingTransfers",
-        transfers = transfers
-    })
-end)
-
-RegisterCommand("transferhorse", function(source, args)
-    if not pendingTransferHorse then
-        TriggerEvent('rsg-core:notify', 'No horse selected for transfer. Select "Transfer" in the Stable first.', 'error')
-        return
-    end
-
-    local targetId = tonumber(args[1])
-    local price = tonumber(args[2]) or 0
-
-    if not targetId then
-        TriggerEvent('rsg-core:notify', 'Usage: /transferhorse [PlayerID] [Price (Optional)]', 'error')
-        return
-    end
-
-    TriggerServerEvent('rsg-stable:server:createTransfer', {
-        horseID = pendingTransferHorse.horseID,
-        targetServerId = targetId,
-        price = price
-    })
-    
-    -- Clear pending transfer after sending offer attempt
-    pendingTransferHorse = nil
 end)
 
 RegisterNUICallback("CloseStable", function(data)
@@ -1169,7 +1321,7 @@ RegisterNUICallback("CloseStable", function(data)
 
     -- SAVE CUSTOMIZATION
     -- Only save if we are indeed in customization mode (EnableCustom was true)
-    -- We can check if any *Using variable is set? Or just always save for safety if MyHorse_entity exists
+    -- AND if at least one component was actually changed
     if MyHorse_entity and DoesEntityExist(MyHorse_entity) and IdMyHorse then
         -- Gather components
         -- Gather components using index-based array to ensure valid JSON array
@@ -1183,14 +1335,15 @@ RegisterNUICallback("CloseStable", function(data)
         if AcsHornUsing then components[#components+1] = AcsHornUsing end
         if AcsLuggageUsing then components[#components+1] = AcsLuggageUsing end
         
-        -- Save to Server
-        TriggerServerEvent('rsg-stable:UpdateHorseComponents', components, IdMyHorse, MyHorse_entity)
-        
-        -- Charge Cost (e.g. $10 service fee for accessing stable customization)
-        -- Only charge if data.spawn is FALSE (meaning we clicked Confirm inside customization)
-        -- or we can track if 'inCustomization' was true.
-        if inCustomization and data.customized and data.cost and data.cost > 0 then
-             TriggerServerEvent('rsg-stable:server:ChargeCustomization', data.cost) 
+        -- ONLY save if at least one component was actually set (meaning user customized something)
+        if #components > 0 then
+            -- Save to Server
+            TriggerServerEvent('rsg-stable:UpdateHorseComponents', components, IdMyHorse, MyHorse_entity)
+            
+            -- Charge Cost
+            if inCustomization and data.customized and data.cost and data.cost > 0 then
+                 TriggerServerEvent('rsg-stable:server:ChargeCustomization', data.cost) 
+            end
         end
     end
 
@@ -1255,6 +1408,23 @@ RegisterNetEvent("rsg-stable:ReceiveHorsesData", function(dataHorses)
     SendNUIMessage({
         myHorsesData = dataHorses
     })
+end)
+
+-- Close UI from server (e.g., when max horses reached)
+RegisterNetEvent('rsg-stable:client:CloseUI', function()
+    SetNuiFocus(false, false)
+    SendNUIMessage({ action = "hide" })
+    SetEntityVisible(PlayerPedId(), true)
+    DestroyAllCams(true)
+    RenderScriptCams(false, false, 0, true, true)
+    if showroomHorse_entity then 
+        DeleteEntity(showroomHorse_entity) 
+        showroomHorse_entity = nil
+    end
+    if MyHorse_entity then 
+        DeleteEntity(MyHorse_entity) 
+        MyHorse_entity = nil
+    end
 end)
 
 local promptGroup = GetRandomIntInRange(0, 0xffffff)

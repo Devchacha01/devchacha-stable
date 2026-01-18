@@ -46,24 +46,7 @@ local function CheckHorseAging(horse)
     return horse
 end
 
--- Update horse components
-RegisterNetEvent("rsg-stable:UpdateHorseComponents", function(components, idhorse, MyHorse_entity)
-    local src = source
-    local encodedComponents = json.encode(components)
-    local Player = GetPlayer(src)
-    if not Player then return end
-    
-    local Playercid = Player.PlayerData.citizenid
-    local id = idhorse
-    
-    MySQL.query("UPDATE horses SET `components`=@components WHERE `cid`=@cid AND `id`=@id", {
-        components = encodedComponents,
-        cid = Playercid,
-        id = id
-    }, function(done)
-        TriggerClientEvent("rsg-stable:client:UpdateHorseComponents", src, MyHorse_entity, components)
-    end)
-end)
+-- UpdateHorseComponents handler moved to end of file for better organization
 
 -- Check selected horse
 RegisterNetEvent("rsg-stable:CheckSelectedHorse", function()
@@ -131,7 +114,8 @@ RegisterNetEvent("rsg-stable:BuyHorse", function(data, name)
 
     MySQL.query('SELECT * FROM horses WHERE `cid`=@cid;', {cid = Playercid}, function(horses)
         if horses and #horses >= Config.MaxNumberOfHorses then
-            TriggerClientEvent('rsg-core:notify', src, Lang:t('stable.max_horses', {Config.MaxNumberOfHorses}), 'error', 5000)
+            TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'You already have ' .. Config.MaxNumberOfHorses .. ' horses! You cannot buy more.', duration = 5000})
+            TriggerClientEvent('rsg-stable:client:CloseUI', src) -- Close the UI
             return
         end
         
@@ -415,43 +399,62 @@ end)
 
 -- Sell horse with ID
 RegisterNetEvent("rsg-stable:SellHorseWithId", function(id)
-    local modelHorse = nil
     local src = source
     local Player = GetPlayer(src)
     if not Player then return end
     
     local Playercid = Player.PlayerData.citizenid
     
-    MySQL.query('SELECT * FROM horses WHERE `cid`=@cid;', {cid = Playercid}, function(horses)
-        if not horses then return end
+    MySQL.query('SELECT * FROM horses WHERE `cid`=@cid AND `id`=@id;', {cid = Playercid, id = id}, function(horses)
+        if not horses or #horses == 0 then return end
         
-        for i = 1, #horses do
-            if tonumber(horses[i].id) == tonumber(id) then
-                modelHorse = horses[i].model
-                MySQL.query('DELETE FROM horses WHERE `cid`=@cid AND `id`=@id;', {
-                    cid = Playercid,
-                    id = id
-                })
-            end
-        end
-
-        -- Calculate and give sell price
-        for k, v in pairs(Config.Horses) do
-            for models, values in pairs(v) do
-                if models ~= "name" then
-                    if models == modelHorse then
-                        local price = tonumber(values[3] / 2)
-                        Player.Functions.AddMoney("cash", price, "stable-sell-horse")
-                        TriggerClientEvent('rsg-core:notify', src, Lang:t('stable.horse_sold', {price}), 'success', 5000)
-                        
-                        -- Log the sale
-                        TriggerEvent('rsg-log:server:CreateLog', 'shops', 'Stable Sale', 'red', 
-                            "**" .. GetPlayerName(src) .. "** (citizenid: " .. Playercid .. " | id: " .. src .. ") sold a horse for $" .. price)
-                    end
-                end
-            end
-        end
+        -- Delete the horse
+        MySQL.query('DELETE FROM horses WHERE `cid`=@cid AND `id`=@id;', {
+            cid = Playercid,
+            id = id
+        })
+        
+        -- Give fixed sell price
+        local sellPrice = Config.SellPrice or 50
+        Player.Functions.AddMoney("cash", sellPrice, "stable-sell-horse")
+        TriggerClientEvent('ox_lib:notify', src, {type = 'success', description = 'Horse sold for $' .. sellPrice, duration = 5000})
+        
+        -- Log the sale
+        TriggerEvent('rsg-log:server:CreateLog', 'shops', 'Stable Sale', 'red', 
+            "**" .. GetPlayerName(src) .. "** (citizenid: " .. Playercid .. " | id: " .. src .. ") sold a horse for $" .. sellPrice)
     end)
+end)
+
+-- Feed Horse - removes item from inventory and heals horse
+RegisterNetEvent("rsg-stable:server:FeedHorse", function(itemName, horseNetId)
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    -- Get feed items config
+    local feedItems = Config.HorseCare and Config.HorseCare.FeedItems or {}
+    local healthRestore = feedItems[itemName]
+    
+    if not healthRestore then
+        TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'This item cannot be fed to horses.', duration = 3000})
+        return
+    end
+    
+    -- Check if player has the item
+    local hasItem = Player.Functions.GetItemByName(itemName)
+    if not hasItem or hasItem.amount < 1 then
+        TriggerClientEvent('ox_lib:notify', src, {type = 'error', description = 'You don\'t have any ' .. itemName .. '!', duration = 3000})
+        return
+    end
+    
+    -- Remove item from inventory
+    Player.Functions.RemoveItem(itemName, 1)
+    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "remove")
+    
+    -- Trigger client to play feed animation and heal horse
+    TriggerClientEvent('rsg-stable:client:ApplyFeedEffect', src, horseNetId, healthRestore, itemName)
+    
+    TriggerClientEvent('ox_lib:notify', src, {type = 'success', description = 'Fed horse with ' .. itemName .. '!', duration = 3000})
 end)
 
 -- Create database table if not exists
@@ -625,6 +628,20 @@ end)
 -- Save Horse Components
 RegisterNetEvent('rsg-stable:UpdateHorseComponents', function(components, horseId, horseEntity)
     local src = source
+    
+    -- Filter out nil values from components array
+    local cleanComponents = {}
+    if type(components) == "table" then
+        for _, v in ipairs(components) do
+            if v ~= nil and v ~= 0 then
+                cleanComponents[#cleanComponents+1] = v
+            end
+        end
+    end
+    
+    -- Don't save if no valid components
+    if #cleanComponents == 0 then return end
+    
     local Player = GetPlayer(src)
     if not Player then return end
     
@@ -633,11 +650,11 @@ RegisterNetEvent('rsg-stable:UpdateHorseComponents', function(components, horseI
     -- Verify ownership
     MySQL.query('SELECT * FROM horses WHERE id = ? AND cid = ?', {horseId, cid}, function(result)
         if result and result[1] then
-             local componentsJson = json.encode(components)
+             local componentsJson = json.encode(cleanComponents)
              MySQL.update('UPDATE horses SET components = ? WHERE id = ?', {componentsJson, horseId})
              
              -- Update client with new components to ensure consistency across re-logs
-             TriggerClientEvent("rsg-stable:client:UpdateHorseComponents", src, horseEntity, components)
+             TriggerClientEvent("rsg-stable:client:UpdateHorseComponents", src, horseEntity, cleanComponents)
         end
     end)
 end)

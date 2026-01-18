@@ -9,7 +9,7 @@ $(document).on('click', '.menu-selectb', function () {
     $('.menu-selectb').removeClass('active');
     $(this).addClass('active');
 
-    $('#page_myhorses, #page_shop, #page_transfers, #page_customization').hide();
+    $('#page_myhorses, #page_shop, #page_customization').hide();
     $('#' + target).show();
 });
 
@@ -134,10 +134,11 @@ window.addEventListener('message', function (event) {
             `);
             $('#page_shop .collapsible, #page_myhorses .collapsible').collapsible();
         }
+    }
 
-        if (event.data.action == "hide") {
-            $("#creatormenu").fadeOut(500);
-        }
+    // Handle hide action - MUST be outside the "show" block!
+    if (event.data.action == "hide") {
+        $("#creatormenu").fadeOut(500);
     }
 
 
@@ -184,7 +185,7 @@ window.addEventListener('message', function (event) {
 
                         <div class="row" style="margin: 0; margin-bottom: 10px;">
                             <div class="col s12 center-align">
-                                <span style="color: ${genderColor}; font-size: 3.5rem; font-weight: 900; text-shadow: 2px 2px 4px #000;">${genderSymbol}</span>
+                                <span style="color: ${genderColor}; font-size: 2.5rem; font-weight: 900; -webkit-text-stroke: 3px ${genderColor}; text-shadow: 1px 1px 3px #000;">${genderSymbol}</span>
                                 <div style="font-size: 0.8rem; color: #b0b0b0; margin-top: -5px;">${tab.is_fertile ? '<span style="color:#4CAF50;">Fertile</span>' : '<span style="color:#F44336;">Infertile</span>'}</div>
                             </div>
                         </div>
@@ -250,8 +251,11 @@ function confirm(shouldSpawn) {
 // ...
 
 function SelectHorse(horseId, stableLoc) {
-    // Check if horse is in current stable
-    if (stableLoc && stableLoc !== currentLocation) {
+    // Check if horse is in current stable (case-insensitive)
+    var stableLocLower = (stableLoc || "").toLowerCase().replace(/\s+/g, '');
+    var currentLocLower = (currentLocation || "").toLowerCase().replace(/\s+/g, '');
+
+    if (stableLoc && stableLocLower !== currentLocLower) {
         // Trigger notification via Lua
         $.post('https://devchacha-stable/notify', JSON.stringify({
             type: 'error',
@@ -266,8 +270,24 @@ function SelectHorse(horseId, stableLoc) {
     confirm(true);
 }
 
+function loadHorse(element) {
+    var horseModel = $(element).attr('id');
+    if (horseModel) {
+        $.post('https://devchacha-stable/loadHorse', JSON.stringify({ horseModel: horseModel }));
+    }
+}
+
+function TransferHorse(horseId, horseName) {
+    // Send to Lua to handle transfer (will show input dialog for player ID)
+    $.post('https://devchacha-stable/transferHorse', JSON.stringify({
+        horseID: horseId,
+        horseName: horseName
+    }));
+}
+
 function SellHorse(horseId) {
-    $.post('https://devchacha-stable/sellHorse', JSON.stringify({ horseID: horseId }));
+    // Send to Lua for confirmation dialog
+    $.post('https://devchacha-stable/confirmSellHorse', JSON.stringify({ horseID: horseId }));
 }
 
 function buyHorseWithGender(model, price) {
@@ -276,7 +296,8 @@ function buyHorseWithGender(model, price) {
     $.post('https://devchacha-stable/BuyHorse', JSON.stringify({
         ModelH: model,
         Dollar: price,
-        Gender: gender
+        Gender: gender,
+        Shop: currentLocation
     }));
     confirm();
 }
@@ -287,6 +308,18 @@ $(document).on('click', '.gender-btn', function (e) {
     var parent = $(this).closest('.gender-select');
     parent.find('.gender-btn').removeClass('active');
     $(this).addClass('active');
+
+    // Get horse name and gender for notification
+    var gender = $(this).data('gender');
+    var horseModel = parent.data('model');
+    // Try to find horse name from the parent item
+    var horseName = parent.closest('.item').find('.title').first().text() || horseModel;
+
+    // Notify via Lua
+    $.post('https://devchacha-stable/notify', JSON.stringify({
+        type: 'inform',
+        msg: gender + ' ' + horseName + ' selected'
+    }));
 });
 
 // Customization Arrows Logic
