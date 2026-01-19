@@ -882,11 +882,15 @@ end)
 -- H Key Input Thread for Calling Horse
 CreateThread(function()
     while true do
-        Wait(100)
-        -- Use raw keyboard check for H key (0x48 = H in hex)
-        if Citizen.InvokeNative(0x91AEF906BCA88877, 0, 0x24978A28) then -- INPUT_WHISTLE_HORSEBACK
+        Wait(0)
+        -- Disable default whistle to prevent game engine "GoToCoord" override
+        -- 0x24978A28 = INPUT_WHISTLE_HORSEBACK
+        DisableControlAction(0, 0x24978A28, true)
+        
+        -- Check if disabled control was pressed
+        if IsDisabledControlJustPressed(0, 0x24978A28) then
             CallHorse()
-            Wait(1500) -- Debounce
+            Wait(1000) -- Debounce
         end
     end
 end)
