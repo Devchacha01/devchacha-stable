@@ -5,6 +5,10 @@ local SelectedHorseId = {}
 local Horses
 local SaddlebagInUse = {} -- Track which saddlebags are currently open { [stashId] = playerId }
 
+-- Crash Recovery System
+local ActiveHorses = {} -- { [cid] = { horseId, model, name, components, stats, timestamp } }
+local CrashRecoveryTime = 600 -- 10 minutes in seconds
+
 -- Resource name check (optional warning)
 CreateThread(function()
     local resourceName = GetCurrentResourceName()
@@ -66,10 +70,9 @@ RegisterNetEvent("rsg-stable:CheckSelectedHorse", function()
                         local stats = {
                             gender = updatedHorse.gender,
                             age = updatedHorse.age,
-                            iq = updatedHorse.iq,
                             xp = updatedHorse.xp,
-                            breed_type = updatedHorse.breed_type,
-                            stable = updatedHorse.stable
+                            stable = updatedHorse.stable,
+                            dead = updatedHorse.dead or 0
                         }
                         TriggerClientEvent("rsg-stable:SetHorseInfo", src, updatedHorse.model, updatedHorse.name, updatedHorse.components, stats, updatedHorse.id)
                     end
@@ -144,29 +147,21 @@ RegisterNetEvent("rsg-stable:BuyHorse", function(data, name)
         -- Generate Stats (Use gender from client or default to random)
         local gender = data.Gender or (math.random(1, 2) == 1 and "Male" or "Female")
         local age = math.random(Config.Aging.MinStartAge, Config.Aging.MaxStartAge)
-        local iq = math.random(0, 10) -- Base IQ for untrained horses
         local xp = 0
         local born_date = os.time()
         local last_age_update = os.time()
-        local breed_type = "Standard"
-        local is_fertile = 1
-        local breed_count = 0
         
         -- Insert horse into database
-        MySQL.query.await('INSERT INTO horses (`cid`, `name`, `model`, `gender`, `age`, `iq`, `xp`, `breed_type`, `stable`, `born_date`, `last_age_update`, `is_fertile`, `breed_count`) VALUES (@Playercid, @name, @model, @gender, @age, @iq, @xp, @breed_type, @stable, @born, @last, @fertile, @bcount);', {
+        MySQL.query.await('INSERT INTO horses (`cid`, `name`, `model`, `gender`, `age`, `xp`, `stable`, `born_date`, `last_age_update`) VALUES (@Playercid, @name, @model, @gender, @age, @xp, @stable, @born, @last);', {
             Playercid = Playercid,
             name = tostring(name),
             model = data.ModelH,
             gender = gender,
             age = age,
-            iq = iq,
             xp = xp,
-            breed_type = breed_type,
             stable = data.Shop,
             born = born_date,
-            last = last_age_update,
-            fertile = is_fertile,
-            bcount = breed_count
+            last = last_age_update
         }, function(rowsChanged)
             if rowsChanged then
                 TriggerClientEvent('rsg-core:notify', src, Lang:t('stable.horse_purchased'), 'success', 5000)
@@ -198,6 +193,11 @@ RegisterNetEvent("rsg-stable:SelectHorseWithId", function(id)
         
         for i = 1, #horse do
             if horse[i].id == id then
+                if horse[i].dead == 1 then
+                    TriggerClientEvent('rsg-core:notify', src, 'This horse is injured and cannot be taken out! Revive it first.', 'error')
+                    return
+                end
+
                 MySQL.query("UPDATE horses SET `selected`='1' WHERE `cid`=@cid AND `id`=@id", {
                     cid = Playercid,
                     id = id
@@ -205,16 +205,27 @@ RegisterNetEvent("rsg-stable:SelectHorseWithId", function(id)
                     local stats = {
                         gender = horse[i].gender,
                         age = horse[i].age,
-                        iq = horse[i].iq,
                         xp = horse[i].xp,
-                        breed_type = horse[i].breed_type
+                        stable = horse[i].stable,
+                        dead = horse[i].dead or 0
                     }
+                    
+                    -- Store active horse for crash recovery
+                    ActiveHorses[Playercid] = {
+                        horseId = horse[i].id,
+                        model = horse[i].model,
+                        name = horse[i].name,
+                        components = horse[i].components,
+                        stats = stats,
+                        timestamp = os.time()
+                    }
+                    
                     TriggerClientEvent("rsg-stable:SetHorseInfo", src, horse[i].model, horse[i].name, horse[i].components, stats, horse[i].id)
                 end)
             end
         end
     end)
-    end)
+end)
 
 
 -- Store Horse in Stable
@@ -224,6 +235,9 @@ RegisterNetEvent('rsg-stable:server:StoreHorse', function(horseId, stableLoc)
     if not Player then return end
     local cid = Player.PlayerData.citizenid
 
+    -- Clear crash recovery when horse is stored
+    ActiveHorses[cid] = nil
+    
     MySQL.update('UPDATE horses SET stable = ?, selected = 0 WHERE id = ? AND cid = ?', {stableLoc, horseId, cid})
 end)
 
@@ -478,6 +492,108 @@ RegisterNetEvent("rsg-stable:server:CheckSaddlebag", function(stashId)
     TriggerClientEvent('rsg-stable:client:SaddlebagApproved', src, stashId)
 end)
 
+-- Set Horse Dead
+RegisterNetEvent('rsg-stable:server:SetHorseDead', function(horseId)
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    local cid = Player.PlayerData.citizenid
+    
+    MySQL.update('UPDATE horses SET dead = 1, selected = 0, stable = "valentine" WHERE id = ? AND cid = ?', {horseId, cid})
+    TriggerClientEvent('rsg-core:notify', src, 'Your horse is critically injured! It has been returned to the stable.', 'error', 5000)
+end)
+
+-- Revive Horse
+RegisterNetEvent('rsg-stable:server:ReviveHorse', function(horseId, stableLoc)
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    local cid = Player.PlayerData.citizenid
+    local cost = 50
+    -- Default to valentine if no location provided
+    local newStable = stableLoc or "valentine"
+    
+    local cash = Player.PlayerData.money['cash']
+    if cash >= cost then
+        Player.Functions.RemoveMoney('cash', cost, 'stable-revive-horse')
+        
+        MySQL.update('UPDATE horses SET dead = 0, stable = ? WHERE id = ? AND cid = ?', {newStable, horseId, cid}, function(rows)
+            if rows > 0 then
+                TriggerClientEvent('rsg-core:notify', src, 'Your horse has been revived ($'..cost..').', 'success')
+                
+                -- Refresh UI by fetching fresh horse data
+                MySQL.query('SELECT * FROM horses WHERE `cid`=@cid;', {cid = cid}, function(horses)
+                    local myHorses = {}
+                    if horses then
+                        for k, v in pairs(horses) do
+                            local updatedHorse = CheckHorseAging(v)
+                            if updatedHorse then
+                                myHorses[#myHorses+1] = updatedHorse
+                            end
+                        end
+                    end
+                    TriggerClientEvent("rsg-stable:ReceiveHorsesData", src, myHorses)
+                end)
+            end
+        end)
+    else
+        TriggerClientEvent('rsg-core:notify', src, 'You cannot afford to revive this horse ($'..cost..').', 'error')
+    end
+end)
+
+-- Rename Horse
+RegisterNetEvent('rsg-stable:server:RenameHorse', function(horseId, newName)
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    local cid = Player.PlayerData.citizenid
+    local cost = 20
+    
+    -- Validate name
+    if not newName or newName == "" or #newName < 2 or #newName > 30 then
+        TriggerClientEvent('rsg-core:notify', src, 'Invalid name! Must be 2-30 characters.', 'error')
+        return
+    end
+    
+    local cash = Player.PlayerData.money['cash']
+    if cash >= cost then
+        -- Verify ownership first
+        MySQL.query('SELECT * FROM horses WHERE id = ? AND cid = ?', {horseId, cid}, function(result)
+            if not result or #result == 0 then
+                TriggerClientEvent('rsg-core:notify', src, 'You do not own this horse!', 'error')
+                return
+            end
+            
+            Player.Functions.RemoveMoney('cash', cost, 'stable-rename-horse')
+            
+            MySQL.update('UPDATE horses SET name = ? WHERE id = ? AND cid = ?', {newName, horseId, cid}, function(rows)
+                if rows > 0 then
+                    TriggerClientEvent('rsg-core:notify', src, 'Horse renamed to "'..newName..'" ($'..cost..').', 'success')
+                    
+                    -- Refresh UI
+                    MySQL.query('SELECT * FROM horses WHERE `cid`=@cid;', {cid = cid}, function(horses)
+                        local myHorses = {}
+                        if horses then
+                            for k, v in pairs(horses) do
+                                local updatedHorse = CheckHorseAging(v)
+                                if updatedHorse then
+                                    myHorses[#myHorses+1] = updatedHorse
+                                end
+                            end
+                        end
+                        TriggerClientEvent("rsg-stable:ReceiveHorsesData", src, myHorses)
+                    end)
+                end
+            end)
+        end)
+    else
+        TriggerClientEvent('rsg-core:notify', src, 'You cannot afford to rename this horse ($'..cost..').', 'error')
+    end
+end)
+
 -- Saddlebag Lock System - Release lock when closed
 RegisterNetEvent("rsg-stable:server:CloseSaddlebag", function(stashId)
     local src = source
@@ -498,6 +614,56 @@ AddEventHandler('playerDropped', function(reason)
             SaddlebagInUse[stashId] = nil
         end
     end
+    
+    -- Note: We do NOT clear ActiveHorses here - that's the whole point!
+    -- The crash recovery data persists so player can recover horse on reconnect
+end)
+
+-- Check for crash recovery when player loads
+local function CheckCrashRecovery(src)
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    local cid = Player.PlayerData.citizenid
+    local activeData = ActiveHorses[cid]
+    
+    if activeData then
+        local currentTime = os.time()
+        local elapsedTime = currentTime - activeData.timestamp
+        local remainingTime = CrashRecoveryTime - elapsedTime
+        
+        if remainingTime > 0 then
+            -- Player has crash recovery available
+            SetTimeout(5000, function() -- Wait for client to fully load
+                TriggerClientEvent('rsg-stable:client:CrashRecovery', src, remainingTime)
+                
+                -- Also set their horse info so InitiateHorse works
+                TriggerClientEvent("rsg-stable:SetHorseInfo", src, activeData.model, activeData.name, activeData.components, activeData.stats, activeData.horseId)
+            end)
+        else
+            -- Expired, clear the data
+            ActiveHorses[cid] = nil
+        end
+    end
+end
+
+-- RSGCore player load events (multiple versions for compatibility)
+RegisterNetEvent('RSGCore:Server:OnPlayerLoaded', function()
+    CheckCrashRecovery(source)
+end)
+
+RegisterNetEvent('rsg-core:server:playerLoaded', function()
+    CheckCrashRecovery(source)
+end)
+
+-- Clear crash recovery when horse dies
+RegisterNetEvent('rsg-stable:server:ClearCrashRecovery', function()
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    
+    local cid = Player.PlayerData.citizenid
+    ActiveHorses[cid] = nil
 end)
 
 -- Create database table if not exists
@@ -510,15 +676,22 @@ local function CreateDatabaseIfNotExists()
             `model` varchar(50) NOT NULL,
             `name` varchar(50) NOT NULL,
             `components` varchar(5000) NOT NULL DEFAULT '{}',
-            `iq` int(11) NOT NULL DEFAULT 0,
-            `xp` int(11) NOT NULL DEFAULT 0,
             `age` int(11) NOT NULL DEFAULT 0,
+            `xp` int(11) NOT NULL DEFAULT 0,
             `gender` varchar(10) NOT NULL DEFAULT 'Male',
-            `breed_type` varchar(50) DEFAULT NULL,
             `stable` varchar(50) DEFAULT NULL,
+            `dead` tinyint(1) NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     ]])
+
+    -- Add dead column if not exists (migration)
+    MySQL.query("SHOW COLUMNS FROM `horses` LIKE 'dead'", function(result)
+        if not result or #result == 0 then
+            MySQL.query("ALTER TABLE `horses` ADD COLUMN `dead` tinyint(1) NOT NULL DEFAULT 0")
+            print("^2[RSG-Stable] ^7Added 'dead' column to horses table.")
+        end
+    end)
     print("^2[RSG-Stable] ^7Database table 'horses' verified/created.")
 end
 
@@ -534,138 +707,15 @@ CreateThread(function()
     CreateDatabaseIfNotExists()
 end)
 
--- Callback for external scripts (rex-horsetrainer)
-RSGCore.Functions.CreateCallback('rsg-horses:server:GetActiveHorse', function(source, cb)
-    cb({ horsexp = 0 })
-end)
+
 
 
 
 -- Train Horse Event
-RegisterNetEvent('rsg-stable:TrainHorse', function(netId)
-    local src = source
-    local Player = GetPlayer(src)
-    if not Player then return end
-    
-    local jobName = Player.PlayerData.job.name
-    if not Config.Training.Jobs[jobName] then
-        TriggerClientEvent('rsg-core:notify', src, 'You are not a horse trainer!', 'error')
-        return
-    end
 
-    local entity = NetworkGetEntityFromNetworkId(netId)
-    -- Verify entity existence if needed, but we mainly need the DB ID which we might need to fetch via Client or store on entity
-
-    -- For MVP, we assume the client passes the horse's DB ID or we find it via the active horse logic
-    -- Since we don't have a direct "Active Horse ID", we'll query by the entity model matching the player's selected horse
-    -- Optimization: Client should send the horse's database ID. For now, let's look up the selected horse.
-    
-    local cid = Player.PlayerData.citizenid
-    MySQL.query('SELECT * FROM horses WHERE cid = ? AND selected = 1', {cid}, function(result)
-        if result and result[1] then
-            local horse = result[1]
-            local newXP = horse.xp + Config.Training.XPPerTrain
-            local newIQ = horse.iq
-            
-            if newXP >= Config.Training.MaxXP then
-                newXP = 0
-                newIQ = math.min(horse.iq + Config.Training.IQIncreasePerLevel, Config.Training.MaxIQ)
-                TriggerClientEvent('rsg-core:notify', src, 'Your horse learned a new trick! IQ Increased!', 'success')
-            else
-                TriggerClientEvent('rsg-core:notify', src, 'Training complete. XP Gained.', 'primary')
-            end
-            
-            MySQL.update('UPDATE horses SET xp = ?, iq = ? WHERE id = ?', {newXP, newIQ, horse.id})
-            
-            -- Refresh client
-            TriggerClientEvent("rsg-stable:SetHorseInfo", src, horse.model, horse.name, horse.components) 
-            -- Note: SetHorseInfo might need to be updated to accept stats too, or we send a separate update
-        else
-            TriggerClientEvent('rsg-core:notify', src, 'No active horse found to train!', 'error')
-        end
-    end)
-end)
 
 -- Breed Horse Event
-RegisterNetEvent('rsg-stable:BreedHorse', function(sireId, damId, name)
-    local src = source
-    local Player = GetPlayer(src)
-    if not Player then return end
-    
-    local cid = Player.PlayerData.citizenid
 
-    MySQL.query('SELECT * FROM horses WHERE id IN (?, ?) AND cid = ?', {sireId, damId, cid}, function(horses)
-        if not horses or #horses ~= 2 then
-            TriggerClientEvent('rsg-core:notify', src, 'You need two horses to breed!', 'error')
-            return
-        end
-        
-        local sire, dam
-        for _, h in pairs(horses) do
-            if h.gender == 'Male' then sire = h else dam = h end
-        end
-        
-        if not sire or not dam then
-            TriggerClientEvent('rsg-core:notify', src, 'You need one Male and one Female!', 'error')
-            return
-        end
-        
-        -- Fertility Check
-        if sire.is_fertile ~= 1 then
-            TriggerClientEvent('rsg-core:notify', src, 'The male horse is infertile!', 'error')
-            return
-        end
-        if dam.is_fertile ~= 1 then
-            TriggerClientEvent('rsg-core:notify', src, 'The female horse is infertile!', 'error')
-            return
-        end
-        
-        -- Breed Count Check
-        if sire.breed_count >= Config.Breeding.MaxBreedCount then
-            TriggerClientEvent('rsg-core:notify', src, 'The male horse has reached max breeding limit!', 'error')
-            return
-        end
-        if dam.breed_count >= Config.Breeding.MaxBreedCount then
-            TriggerClientEvent('rsg-core:notify', src, 'The female horse has reached max breeding limit!', 'error')
-            return
-        end
-
-        -- Increment breed count for both parents
-        local newSireCount = sire.breed_count + 1
-        local newDamCount = dam.breed_count + 1
-        
-        -- Check if parents become infertile after this breeding (luck-based at max)
-        local sireInfertile = newSireCount >= Config.Breeding.MaxBreedCount and 0 or 1
-        local damInfertile = newDamCount >= Config.Breeding.MaxBreedCount and 0 or 1
-        
-        MySQL.update('UPDATE horses SET breed_count = ?, is_fertile = ? WHERE id = ?', {newSireCount, sireInfertile, sire.id})
-        MySQL.update('UPDATE horses SET breed_count = ?, is_fertile = ? WHERE id = ?', {newDamCount, damInfertile, dam.id})
-
-        -- Create Foal
-        local foalModel = math.random() > 0.5 and sire.model or dam.model
-        local foalGender = math.random(1, 2) == 1 and "Male" or "Female"
-        local foalIQ = math.floor((sire.iq + dam.iq) / 2) + math.random(-5, 5)
-        foalIQ = math.max(0, math.min(foalIQ, Config.Training.MaxIQ))
-        
-        -- Roll for infertility
-        local foalFertile = 1
-        if math.random(1, 100) <= Config.Breeding.InfertilityChance then
-            foalFertile = 0
-        end
-        
-        local foalAge = Config.Breeding.FoalStartAge
-        local bornDate = os.time()
-        
-        MySQL.insert('INSERT INTO horses (cid, name, model, gender, age, iq, xp, breed_type, is_fertile, breed_count, born_date, last_age_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-            cid, name, foalModel, foalGender, foalAge, foalIQ, 0, 'Bred', foalFertile, 0, bornDate, bornDate
-        }, function(id)
-            if id then
-                local fertilityMsg = foalFertile == 1 and "" or " (Infertile)"
-                TriggerClientEvent('rsg-core:notify', src, 'Congratulations! A foal was born!' .. fertilityMsg, 'success')
-            end
-        end)
-    end)
-end)
 
 
 -- Save Horse Components

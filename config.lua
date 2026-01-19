@@ -43,38 +43,7 @@ Config.Anim = {
     Drink2 = { dict = 'amb_creature_mammal@prop_horse_drink_trough@idle0', anim = 'idle_a', duration = 20 },
     Graze  = { dict = 'amb_creature_mammal@world_horse_grazing@idle',      anim = 'idle_a', duration = 20 }
 }
-Config.Training = {
-    MaxIQ = 100,
-    MaxXP = 1000,
-    XPPerTrain = 10,
-    IQIncreasePerLevel = 5,
-    BreedingMinAge = 3,
-    TrainingCooldown = 1 * 60 * 1000, -- 1 minute
-    BreedingCooldown = 60 * 60 * 1000, -- 1 hour
-    Jobs = {
-        ['valhorsetrainer'] = true,
-        ['rhohorsetrainer'] = true,
-        ['blkhorsetrainer'] = true,
-        ['strhorsetrainer'] = true,
-        ['stdenhorsetrainer'] = true,
-    }
-}
 
-Config.Aging = {
-    MinStartAge = 14,
-    MaxStartAge = 15,
-    LifespanDays = 75,      -- Horse dies after 75 days (2.5 months)
-    AgeIntervalDays = 3,    -- Horse ages 1 year every 3 days
-}
-
-Config.Breeding = {
-    RideableAge = 4,          -- Min age to ride
-    FullyGrownAge = 6,        -- Age for full size (scale 1.0)
-    MaxBreedCount = 7,        -- Max breeding attempts per horse
-    InfertilityChance = 15,   -- % chance newborn is infertile
-    FoalStartAge = 0,         -- Age of newborn foal
-    FoalScale = 0.5,          -- Scale multiplier for foals (age 0)
-}
 
 Config.Stables = {
     valentine = {
@@ -84,9 +53,7 @@ Config.Stables = {
         SpawnHorse = { x = -371.97, y = 786.56, z = 116.21, h = 274.79 },
         Showroom = { x = -366.07, y = 781.81, z = 115.14, h = 5.97 },
         CamHorse = { x = -367.9267, y = 783.0237, z = 117.7778, rx = -36.42624, ry = 0.0, rz = -100.9786 },
-        CamHorseGear = { x = -367.9267, y = 783.0237, z = 117.7778, rx = -36.42624, ry = 0.0, rz = -100.9786 },
-        SpawnCart = { x = -370.11, y = 786.99, z = 115.16, h = 274.18 },
-        CamCart = { x = -363.5831, y = 792.1113, z = 118.0419, rx = -16.35144, ry = 0.0, rz = 143.9759 }
+        CamHorseGear = { x = -367.9267, y = 783.0237, z = 117.7778, rx = -36.42624, ry = 0.0, rz = -100.9786 }
     },
     rhodes = {
         Name = "Stable of Rhodes",
@@ -95,20 +62,16 @@ Config.Stables = {
         SpawnHorse = { x = 1437.61, y = -1291.61, z = 77.87, h = 99.93 },
         Showroom = { x = 1431.56, y = -1288.21, z = 76.82, h = 87.28 },
         CamHorse = { x = 1431.58, y = -1292.27, z = 79.0, rx = -16.0, ry = 0.0, rz = 6.0 },
-        CamHorseGear = { x = 1431.58, y = -1292.27, z = 79.0, rx = -16.0, ry = 0.0, rz = 6.0 },
-        SpawnCart = { x = 1414.53, y = -1294.22, z = 77.95, h = 285.53 },
-        CamCart = { x = 1416.7, y = -1301.12, z = 81.0, rx = -16.0, ry = 0.0, rz = 6.0 }
+        CamHorseGear = { x = 1431.58, y = -1292.27, z = 79.0, rx = -16.0, ry = 0.0, rz = 6.0 }
     },
     saintdenis = {
         Name = "Saint Denis Stable",
         Pos = vector3(2510.58, -1456.83, 46.31),
         StableNPC = { x = 2512.35, y = -1456.89, z = 45.2, h = 91.68, model = "u_m_m_bwmstablehand_01" },
-        SpawnHorse = { x = 2508.69, y = -1446.99, z = 46.45, h = 91.28 },
+        SpawnHorse = { x = 2503.01, y = -1443.17, z = 46.36, h = 170.79 },
         Showroom = { x = 2508.59, y = -1449.96, z = 45.5, h = 90.09 },
         CamHorse = { x = 2506.807, y = -1452.29, z = 48.61699, rx = -34.77003, ry = 0.0, rz = -35.20742 },
-        CamHorseGear = { x = 2508.876, y = -1451.953, z = 48.67999, rx = -35.29771, ry = 0.0, rz = -0.4993192 },
-        SpawnCart = { x = 2503.47, y = -1441.89, z = 46.31, h = 0.24 },
-        CamCart = { x = 2506.428, y = -1437.7, z = 50.57832, rx = -39.4497, ry = 0.0, rz = 120.535 }
+        CamHorseGear = { x = 2508.876, y = -1451.953, z = 48.67999, rx = -35.29771, ry = 0.0, rz = -0.4993192 }
     },
     strawberry = {
         Name = "Strawberry Stable",
@@ -117,9 +80,7 @@ Config.Stables = {
         SpawnHorse = { x = -1821.83, y = -561.37, z = 156.11, h = 250.11 },
         Showroom = { x = -1820.26, y = -555.84, z = 155.16, h = 163.01 },
         CamHorse = { x = -1819.512, y = -558.6999, z = 157.6765, rx = -23.95241, ry = 0.0, rz = 28.46066 },
-        CamHorseGear = { x = -1819.512, y = -558.6999, z = 157.6765, rx = -23.95241, ry = 0.0, rz = 28.46066 },
-        SpawnCart = { x = -1821.46, y = -561.41, z = 155.06, h = 256.24 },
-        CamCart = { x = -1816.372, y = -560.2017, z = 157.6678, rx = -22.02157, ry = 0.0, rz = 124.3779 }
+        CamHorseGear = { x = -1819.512, y = -558.6999, z = 157.6765, rx = -23.95241, ry = 0.0, rz = 28.46066 }
     },
     blackwater = {
         Name = "Blackwater Stable",
@@ -128,9 +89,7 @@ Config.Stables = {
         SpawnHorse = { x = -863.47, y = -1365.77, z = 43.60, h = 88.81 },
         Showroom = { x = -864.25, y = -1361.8, z = 42.7, h = 177.48 },
         CamHorse = { x = -862.6163, y = -1362.927, z = 45.58158, rx = -40.96593, ry = 0.0, rz = 71.8129 },
-        CamHorseGear = { x = -862.6163, y = -1362.927, z = 45.58158, rx = -40.96593, ry = 0.0, rz = 71.8129 },
-        SpawnCart = { x = -872.58, y = -1366.57, z = 42.53, h = 270.35 },
-        CamCart = { x = -869.7852, y = -1361.103, z = 45.26991, rx = -17.11994, ry = 0.0, rz = 161.4039 }
+        CamHorseGear = { x = -862.6163, y = -1362.927, z = 45.58158, rx = -40.96593, ry = 0.0, rz = 71.8129 }
     },
     tumbleweed = {
         Name = "Tumbleweed Stable",
@@ -139,9 +98,7 @@ Config.Stables = {
         SpawnHorse = { x = -5520.02, y = -3044.28, z = -2.34, h = 91.29 },
         Showroom = { x = -5519.47, y = -3039.32, z = -3.31, h = 181.62 },
         CamHorse = { x = -5517.651, y = -3041.113, z = -0.50949, rx = -33.14523, ry = 0.0, rz = 55.47822 },
-        CamHorseGear = { x = -5517.651, y = -3041.113, z = -0.50949, rx = -33.14523, ry = 0.0, rz = 55.47822 },
-        SpawnCart = { x = -5520.65, y = -3044.3, z = -3.39, h = 270.83 },
-        CamCart = { x = -5514.191, y = -3040.633, z = -0.5108569, rx = -18.79705, ry = 0.0, rz = 141.3175 }
+        CamHorseGear = { x = -5517.651, y = -3041.113, z = -0.50949, rx = -33.14523, ry = 0.0, rz = 55.47822 }
     }
 }
 
@@ -286,4 +243,10 @@ Config.Horses = {
 		["A_C_Donkey_01"] = {"Donkey", 15, 15},
 		["A_C_Horse_MP_Mangy_Backup"] = {"Mangy Backup", 15, 15},
 	}
+}
+Config.Aging = { 
+    MinStartAge = 14, 
+    MaxStartAge = 15, 
+    LifespanDays = 75, -- Horse dies after 75 days (2.5 months) 
+    AgeIntervalDays = 3, -- Horse ages 1 year every 3 days 
 }

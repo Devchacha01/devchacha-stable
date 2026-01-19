@@ -43,11 +43,9 @@ local horseName
 local horseComponents = {}
 local horseStats = {} -- New stats variable
 local initializing = false
-local horseComponents = {}
-local horseStats = {} -- New stats variable
-local initializing = false
 local alreadySentShopData = false
 local currentStableLocation = nil -- Track current stable location
+local spawnedPeds = {}
 
 
 myHorses = {}
@@ -84,6 +82,11 @@ local function SetHorseInfo(horse_model, horse_name, horse_components, horse_sta
     horseStats = horse_stats or {}
     IdMyHorse = horse_id
 end
+
+-- Event handler to receive horse info from server
+RegisterNetEvent('rsg-stable:SetHorseInfo', function(horse_model, horse_name, horse_components, horse_stats, horse_id)
+    SetHorseInfo(horse_model, horse_name, horse_components, horse_stats, horse_id)
+end)
 
 local function NativeSetPedComponentEnabled(ped, component)
     Citizen.InvokeNative(0xD3A7B003ED343FD9, ped, component, true, true, true)
@@ -131,32 +134,7 @@ DecorRegister("horseId", 3)
 
 
 
-RegisterNetEvent('rsg-stable:client:BreedHorse', function(data)
-    local entity = data.entity
-    local myHorse = SpawnplayerHorse
-    
-    if not entity or not DoesEntityExist(entity) then return end
-    if not myHorse or not DoesEntityExist(myHorse) then return end
-    
-    if entity == myHorse then
-        TriggerEvent('rsg-core:notify', "You cannot breed with yourself!", "error")
-        return
-    end
 
-    local idA = DecorGetInt(entity, "horseId")
-    local idB = DecorGetInt(myHorse, "horseId")
-    
-    if not idA or idA == 0 or not idB or idB == 0 then
-         TriggerEvent('rsg-core:notify', "Invalid horse data.", "error")
-         return
-    end
-    
-    -- Simple Input for Name
-    local foalName = "Foal" -- Default
-    -- We can try to get input, but for stability, let's use a server-generated name or simpler flow
-    -- Trigger Server
-    TriggerServerEvent('rsg-stable:BreedHorse', idA, idB, foalName)
-end)
 
 local function createCamera(entity)
     if not CamPos then 
@@ -447,18 +425,7 @@ local function InitiateHorse(atCoords)
             end
         end
         
-        -- Foal Size Scaling based on Age
-        if horseStats and horseStats.age ~= nil then
-            local age = horseStats.age
-            local fullyGrownAge = Config.Breeding and Config.Breeding.FullyGrownAge or 6
-            local foalScale = Config.Breeding and Config.Breeding.FoalScale or 0.5
-            
-            if age < fullyGrownAge then
-                local scaleProgress = age / fullyGrownAge
-                local currentScale = foalScale + (scaleProgress * (1.0 - foalScale))
-                SetPedScale(entity, currentScale)
-            end
-        end
+
 
         if horseModel == "A_C_Horse_MP_Mangy_Backup" then
             NativeSetPedComponentEnabled(entity, 0x106961A8)
@@ -483,16 +450,10 @@ local function InitiateHorse(atCoords)
     
     if not isVehicle then
         SetPedConfigFlag(entity, 297, true)
-        -- Add Interations (Train Horse, Brush, Feed, Saddlebag) - Only for horses
+        -- Add Interations (Brush, Feed, Saddlebag) - Only for horses
         exports['rsg-target']:AddTargetEntity(entity, {
             options = {
-                {
-                    type = "client",
-                    event = "rsg-stable:client:TrainHorse",
-                    icon = "fas fa-dumbbell",
-                    label = "Train Horse",
-                    job = {["valhorsetrainer"] = 0, ["rhohorsetrainer"] = 0, ["blkhorsetrainer"] = 0, ["strhorsetrainer"] = 0, ["stdenhorsetrainer"] = 0},
-                },
+
                 {
                     type = "client",
                     event = "rsg-stable:client:OpenSaddlebag",
@@ -529,14 +490,7 @@ local function InitiateHorse(atCoords)
     initializing = false
 end
 
-RegisterNetEvent('rsg-stable:client:TrainHorse', function()
-    -- Only allow training your own horse or a horse you are targeting (which we are)
-    -- We need the entity network ID
-    if SpawnplayerHorse and DoesEntityExist(SpawnplayerHorse) then
-        local netId = NetworkGetNetworkIdFromEntity(SpawnplayerHorse)
-        TriggerServerEvent('rsg-stable:TrainHorse', netId)
-    end
-end)
+
 
 RegisterNetEvent('rsg-stable:client:OpenSaddlebag', function(data)
     -- rsg-target passes data which includes .entity
@@ -860,53 +814,82 @@ RegisterNetEvent('rsg-stable:client:ApplyFeedEffect', function(horseNetId, healt
     end
 end)
 
--- Ride Restriction for Young Horses
-CreateThread(function()
-    while true do
-        if SpawnplayerHorse and DoesEntityExist(SpawnplayerHorse) then
-            Wait(1000) -- Check every second instead of 500ms
-            local rideableAge = Config.Breeding and Config.Breeding.RideableAge or 4
-            local horseAge = (horseStats and horseStats.age) or 100 -- Default to rideable if no stats
-            
-            if horseAge < rideableAge then
-                -- Check if player is trying to mount
-                local ped = PlayerPedId()
-                if IsPedOnMount(ped) and GetMount(ped) == SpawnplayerHorse then
-                    -- Force dismount
-                    TaskDismountAnimal(ped, 0, 0, 0, 0, 0)
-                    TriggerEvent('rsg-core:notify', 'This horse is too young to ride! (Age: ' .. horseAge .. '/' .. rideableAge .. ')', 'error')
-                    Wait(2000) -- Cooldown to prevent spam
-                end
-            end
-        else
-            Wait(2000) -- Sleep if no horse
-        end
-    end
-end)
+
 
 -- Handling Loop for IQ Effect
-CreateThread(function()
-    while true do
-        if SpawnplayerHorse and DoesEntityExist(SpawnplayerHorse) then
-             Wait(5000)
-             if IsPedInVehicle(PlayerPedId(), SpawnplayerHorse, false) then
-                if horseStats and horseStats.iq and horseStats.iq < 20 then
-                    -- Low IQ Effect: Random agitation or refusal
-                    if math.random(1, 100) < 10 then
-                       TaskAnimalAgitated(SpawnplayerHorse, -1)
-                    end
-                end
-             end
-        else
-             Wait(5000) -- Sleep
+
+-- Crash Recovery Variables
+local crashRecoveryActive = false
+local crashRecoveryExpiry = 0
+
+local function CallHorse()
+    -- Check if crash recovery is active
+    if crashRecoveryActive and GetGameTimer() < crashRecoveryExpiry then
+        -- Player crashed and reconnected within 10 minutes - spawn horse at player location
+        TriggerEvent('ox_lib:notify', {type = 'success', description = 'Recovering your horse from before crash...', duration = 3000})
+        crashRecoveryActive = false
+        crashRecoveryExpiry = 0
+        
+        -- Spawn the horse at player's location
+        local ped = PlayerPedId()
+        local pCoords = GetEntityCoords(ped)
+        InitiateHorse(pCoords)
+        return
+    end
+    
+    -- Normal behavior: If horse is already out, make it come to player
+    if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
+        local ped = PlayerPedId()
+        local pCoords = GetEntityCoords(ped)
+        
+        -- Play whistle animation on player
+        local animDict = "amb_camp@world_human_horse_care@whistle@"
+        RequestAnimDict(animDict)
+        local timeout = 0
+        while not HasAnimDictLoaded(animDict) and timeout < 50 do 
+            Wait(10) 
+            timeout = timeout + 1
         end
+        if HasAnimDictLoaded(animDict) then
+            TaskPlayAnim(ped, animDict, "whistle_short_a", 8.0, -8.0, 1500, 0, 0, false, false, false)
+        end
+        
+        -- Make horse follow player
+        ClearPedTasks(SpawnplayerHorse)
+        
+        -- Use TaskFollowToOffsetOfEntity - makes horse follow player
+        TaskFollowToOffsetOfEntity(SpawnplayerHorse, ped, 0.0, -2.0, 0.0, 3.0, -1, 2.0, true)
+        
+        TriggerEvent('ox_lib:notify', {type = 'inform', description = 'Your horse is coming to you!', duration = 3000})
+    else
+        -- No horse out
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'You don\'t have a horse out. Go to a stable to retrieve one.', duration = 4000})
+    end
+end
+
+-- Handle crash recovery notification on spawn
+RegisterNetEvent('rsg-stable:client:CrashRecovery', function(remainingSeconds)
+    if remainingSeconds > 0 then
+        crashRecoveryActive = true
+        crashRecoveryExpiry = GetGameTimer() + (remainingSeconds * 1000)
+        
+        local minutes = math.floor(remainingSeconds / 60)
+        local seconds = remainingSeconds % 60
+        TriggerEvent('ox_lib:notify', {type = 'inform', description = 'Your horse is waiting! Press H within '..minutes..'m '..seconds..'s to recover it.', duration = 10000})
     end
 end)
 
-local function WhistleHorse()
-    -- Whistle Disabled
-    TriggerEvent('rsg-core:notify', 'Whistling is disabled. You must retrieve your horse from the stable.', 'error')
-end
+-- H Key Input Thread for Calling Horse
+CreateThread(function()
+    while true do
+        Wait(100)
+        -- Use raw keyboard check for H key (0x48 = H in hex)
+        if Citizen.InvokeNative(0x91AEF906BCA88877, 0, 0x24978A28) then -- INPUT_WHISTLE_HORSEBACK
+            CallHorse()
+            Wait(1500) -- Debounce
+        end
+    end
+end)
 
 local function fleeHorse(playerHorse)
     if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
@@ -1483,6 +1466,49 @@ RegisterNUICallback("transferHorse", function(data, cb)
     if cb then cb('ok') end
 end)
 
+RegisterNUICallback("renameHorse", function(data, cb)
+    local horseID = tonumber(data.horseID)
+    local currentName = data.horseName or "Unknown"
+    
+    -- Close the stable UI first
+    SetNuiFocus(false, false)
+    SendNUIMessage({ action = "hide" })
+    SetEntityVisible(PlayerPedId(), true)
+    
+    if showroomHorse_entity then DeleteEntity(showroomHorse_entity) showroomHorse_entity = nil end
+    if MyHorse_entity then DeleteEntity(MyHorse_entity) MyHorse_entity = nil end
+    DestroyAllCams(true)
+    RenderScriptCams(false, false, 0, true, true)
+    
+    -- Open Input Dialog
+    local input = exports['ox_lib']:inputDialog("Rename Horse ($20)", {
+        { type = 'input', label = "New Name (2-30 characters)", default = currentName, required = true }
+    })
+    
+    if not input or not input[1] or input[1] == "" then 
+        TriggerEvent('ox_lib:notify', {type = 'error', description = 'Rename cancelled.', duration = 3000})
+        SetNuiFocus(false, false)
+        SendNUIMessage({ action = "hide" })
+        if cb then cb('ok') end
+        return 
+    end
+    
+    local newName = input[1]
+    TriggerServerEvent('rsg-stable:server:RenameHorse', horseID, newName)
+    
+    -- Re-open stable after a short delay
+    Wait(500)
+    SetNuiFocus(true, true)
+    SendNUIMessage({
+        action = "show",
+        location = currentStableLocation,
+        shopData = getShopData()
+    })
+    TriggerServerEvent("rsg-stable:AskForMyHorses")
+    
+    if cb then cb('ok') end
+end)
+
 RegisterNUICallback("notify", function(data, cb)
     TriggerEvent('ox_lib:notify', {type = data.type, description = data.msg, duration = 5000})
     if cb then cb('ok') end
@@ -1548,27 +1574,27 @@ end)
 
 AddEventHandler("onResourceStop", function(resourceName)
     if resourceName == GetCurrentResourceName() then
+        -- Cleanup Prompts & Blips
         for _, prompt in pairs(prompts) do
             PromptDelete(prompt)
-            RemoveBlip(blip)
         end
-    end
-end)
+        if blip then RemoveBlip(blip) end
 
-AddEventHandler("onResourceStop", function(resourceName)
-    if (GetCurrentResourceName() ~= resourceName) then
-        return
-    end
-    SetNuiFocus(false, false)
-    SendNUIMessage({
-        action = "hide"
-    })
-end)
+        -- Cleanup NUI
+        SetNuiFocus(false, false)
+        SendNUIMessage({
+            action = "hide"
+        })
 
-AddEventHandler("onResourceStop", function(resourceName)
-    if GetCurrentResourceName() == resourceName then
-        DeleteEntity(SpawnplayerHorse)
-        SpawnplayerHorse = 0
+        -- Cleanup Entities
+        if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
+            DeleteEntity(SpawnplayerHorse)
+            SpawnplayerHorse = 0
+        end
+
+        for _, ped in pairs(spawnedPeds) do
+            if DoesEntityExist(ped) then DeleteEntity(ped) end
+        end
     end
 end)
 
@@ -1606,7 +1632,7 @@ end)
 local promptGroup = GetRandomIntInRange(0, 0xffffff)
 local varStringCasa = CreateVarString(10, "LITERAL_STRING", Lang:t('stable.stable'))
 
-local spawnedPeds = {}
+local varStringCasa = CreateVarString(10, "LITERAL_STRING", Lang:t('stable.stable'))
 
 local function SpawnStableNPCs()
     for k, v in pairs(Config.Stables) do
@@ -1767,4 +1793,41 @@ RegisterCommand('fixstable', function()
     if showroomHorse_entity then DeleteEntity(showroomHorse_entity) end
     showroomHorse_entity = nil
     print("[RSG-Stable] Emergency fix applied.")
+end)
+
+-- Death Monitor
+CreateThread(function()
+    while true do
+        Wait(1000)
+        if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
+            if IsEntityDead(SpawnplayerHorse) then
+                if IdMyHorse then
+                    -- Immediate client notification
+                    TriggerEvent('ox_lib:notify', {type = 'error', description = 'Your horse is critically injured! Go to a stable to revive it.', duration = 8000})
+                    
+                    TriggerServerEvent('rsg-stable:server:SetHorseDead', IdMyHorse)
+                    TriggerServerEvent('rsg-stable:server:ClearCrashRecovery') -- Clear crash recovery on death
+                    
+                    -- Clean up the dead horse entity
+                    Wait(3000)
+                    if DoesEntityExist(SpawnplayerHorse) then
+                        DeleteEntity(SpawnplayerHorse)
+                    end
+                    
+                    -- Reset local state to prevent spam or misuse
+                    SpawnplayerHorse = 0
+                    IdMyHorse = nil
+                    horseModel = nil
+                    horseName = nil
+                end
+            end
+        end
+    end
+end)
+
+RegisterNUICallback('reviveHorse', function(data, cb)
+    if data.horseID then
+        TriggerServerEvent('rsg-stable:server:ReviveHorse', data.horseID, data.location)
+    end
+    cb('ok')
 end)

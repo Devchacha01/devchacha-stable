@@ -7,7 +7,8 @@ description 'RSG-Stable - Horse Purchasing & Customization'
 version '1.1.0'
 
 dependencies {
-    'rsg-core'
+    'rsg-core',
+    'ox_lib'
 }
 
 shared_scripts {
@@ -26,7 +27,6 @@ server_scripts {
 ui_page 'html/index.html'
 files {
     'html/*',
-    'html/css/*',
     'html/fonts/*',
     'html/img/*'
 }

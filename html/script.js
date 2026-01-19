@@ -173,6 +173,22 @@ window.addEventListener('message', function (event) {
             let stableLoc = (tab.stable && tab.stable != "null") ? tab.stable : "Valentine";
             let uniqueHeaderID = `header-${HorseID}`;
 
+            let isDead = (tab.dead == 1 || tab.dead == true);
+            let healthDisplay = isDead ? '<span style="color: #ef5350; font-weight: bold;">INJURED</span>' : '<span style="color: #fff; font-weight: bold;">100%</span>';
+
+            let actionButton = '';
+            if (isDead) {
+                actionButton = `
+                 <div class="col s3 panel-col item" onclick="ReviveHorse(${HorseID})">
+                    <h6 class="grey-text title" style="color: #ef5350 !important;">Revive ($50)</h6>
+                 </div>`;
+            } else {
+                actionButton = `
+                 <div class="col s3 panel-col item" onclick="SelectHorse(${HorseID}, '${stableLoc}')">
+                    <h6 class="grey-text title">Take Out</h6>
+                 </div>`;
+            }
+
             $('#page_myhorses .scroll-container .collapsible').append(`
                 <li>
                     <div id="${uniqueHeaderID}" class="collapsible-header col s12 panel" style="background-color: transparent; border: 0; min-height: 80px; display: block; padding: 10px;">
@@ -186,13 +202,12 @@ window.addEventListener('message', function (event) {
                         <div class="row" style="margin: 0; margin-bottom: 10px;">
                             <div class="col s12 center-align">
                                 <span style="color: ${genderColor}; font-size: 2.5rem; font-weight: 900; -webkit-text-stroke: 3px ${genderColor}; text-shadow: 1px 1px 3px #000;">${genderSymbol}</span>
-                                <div style="font-size: 0.8rem; color: #b0b0b0; margin-top: -5px;">${tab.is_fertile ? '<span style="color:#4CAF50;">Fertile</span>' : '<span style="color:#F44336;">Infertile</span>'}</div>
                             </div>
                         </div>
 
                         <div class="row" style="margin: 0;">
                             <div class="col s6 left-align" style="padding-right: 5px;">
-                                <div style="font-size: 0.9rem; color: #b0b0b0;">Health: <span style="color: #fff; font-weight: bold;">100%</span></div>
+                                <div style="font-size: 0.9rem; color: #b0b0b0;">Health: ${healthDisplay}</div>
                                 <div style="font-size: 0.9rem; color: #b0b0b0; margin-top: 5px;">XP: <span style="color: #fff; font-weight: bold;">${xp}</span></div>
                             </div>
                             
@@ -204,13 +219,14 @@ window.addEventListener('message', function (event) {
 
                     </div>
                     <div class="collapsible-body col s12 panel item" id="${HorseID}">
-                        <div class="col s4 panel-col item" onclick="SelectHorse(${HorseID}, '${stableLoc}')">
-                            <h6 class="grey-text title">Take Out</h6>
+                        ${actionButton}
+                        <div class="col s3 panel-col item" onclick="RenameHorse(${HorseID}, '${HorseName}')">
+                            <h6 class="grey-text title">Rename</h6>
                         </div>
-                        <div class="col s4 panel-col item" onclick="TransferHorse(${HorseID}, '${HorseName}')">
+                        <div class="col s3 panel-col item" onclick="TransferHorse(${HorseID}, '${HorseName}')">
                             <h6 class="grey-text title">Transfer</h6>
                         </div>
-                        <div class="col s4 panel-col item" onclick="SellHorse(${HorseID})">
+                        <div class="col s3 panel-col item" onclick="SellHorse(${HorseID})">
                             <h6 class="grey-text title">Sell</h6>
                         </div>
                     </div>
@@ -318,7 +334,7 @@ $(document).on('click', '.gender-btn', function (e) {
     // Notify via Lua
     $.post('https://devchacha-stable/notify', JSON.stringify({
         type: 'inform',
-        msg: gender + ' ' + horseName + ' selected'
+        msg: 'You have selected ' + gender
     }));
 });
 
@@ -375,3 +391,10 @@ function triggerCustomizationUpdate(category, value) {
     $.post(`https://devchacha-stable/${category}`, JSON.stringify({ id: value }));
 }
 
+function ReviveHorse(horseId) {
+    $.post('https://devchacha-stable/reviveHorse', JSON.stringify({ horseID: horseId, location: currentLocation }));
+}
+
+function RenameHorse(horseId, horseName) {
+    $.post('https://devchacha-stable/renameHorse', JSON.stringify({ horseID: horseId, horseName: horseName }));
+}
