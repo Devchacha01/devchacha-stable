@@ -824,11 +824,66 @@ RSGCore.Functions.CreateUseableItem('haysnack', function(source, item)
     end
 end)
 
--- feed horse horsemeal
-RSGCore.Functions.CreateUseableItem('horsemeal', function(source, item)
+ -- feed horse horsemeal
+ RSGCore.Functions.CreateUseableItem('horsemeal', function(source, item)
     local Player = RSGCore.Functions.GetPlayer(source)
     if Player.Functions.RemoveItem(item.name, 1, item.slot) then
         TriggerClientEvent('rsg-horses:client:playerfeedhorse', source, item.name)
         TriggerClientEvent('rsg-inventory:client:ItemBox', source, RSGCore.Shared.Items[item.name], "remove")
     end
+end)
+
+-- Whistle Call Logic
+RegisterNetEvent('rsg-stable:server:WhistleCall', function()
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+    local cid = Player.PlayerData.citizenid
+
+    -- Check if already active in memory
+    if ActiveHorses[cid] then
+        local horse = ActiveHorses[cid]
+        TriggerClientEvent("rsg-stable:SetHorseInfo", src, horse.model, horse.name, horse.components, horse.stats, horse.horseId)
+        TriggerClientEvent("rsg-stable:client:SpawnHorseFromWhistle", src)
+        return
+    end
+
+    -- Query DB for selected or first horse
+    MySQL.query('SELECT * FROM horses WHERE cid = ? ORDER BY selected DESC, id ASC LIMIT 1', {cid}, function(result)
+        if result and #result > 0 then
+            local horse = result[1]
+            local stats = {
+                gender = horse.gender,
+                age = horse.age,
+                xp = horse.xp,
+                stable = horse.stable,
+                dead = horse.dead or 0
+            }
+            
+            if horse.dead == 1 then
+                TriggerClientEvent('rsg-core:notify', src, 'Your horse is injured and cannot come to you.', 'error')
+                return
+            end
+
+            -- Set as active
+            ActiveHorses[cid] = {
+                horseId = horse.id,
+                model = horse.model,
+                name = horse.name,
+                components = horse.components,
+                stats = stats,
+                timestamp = os.time()
+            }
+            
+            -- Set selected = 1 if it wasn't
+            if horse.selected == 0 then
+                MySQL.update('UPDATE horses SET selected = 1 WHERE id = ?', {horse.id})
+            end
+            
+            TriggerClientEvent("rsg-stable:SetHorseInfo", src, horse.model, horse.name, horse.components, stats, horse.id)
+            TriggerClientEvent("rsg-stable:client:SpawnHorseFromWhistle", src)
+        else
+            TriggerClientEvent('rsg-core:notify', src, 'You do not own any horses!', 'error')
+        end
+    end)
 end)

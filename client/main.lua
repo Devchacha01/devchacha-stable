@@ -862,8 +862,20 @@ local function CallHorse()
         
         TriggerEvent('ox_lib:notify', {type = 'inform', description = 'Your horse is coming to you!', duration = 3000})
     else
-        -- No horse out
-        TriggerEvent('ox_lib:notify', {type = 'error', description = 'You don\'t have a horse out. Go to a stable to retrieve one.', duration = 4000})
+        -- No horse out, request spawn from server
+        local ped = PlayerPedId()
+        local animDict = "amb_camp@world_human_horse_care@whistle@"
+        RequestAnimDict(animDict)
+        local timeout = 0
+        while not HasAnimDictLoaded(animDict) and timeout < 50 do 
+            Wait(10) 
+            timeout = timeout + 1
+        end
+        if HasAnimDictLoaded(animDict) then
+            TaskPlayAnim(ped, animDict, "whistle_short_a", 8.0, -8.0, 1500, 0, 0, false, false, false)
+        end
+        
+        TriggerServerEvent('rsg-stable:server:WhistleCall')
     end
 end
 
@@ -899,24 +911,28 @@ local function fleeHorse(playerHorse)
     if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
         TaskAnimalFlee(SpawnplayerHorse, PlayerPedId(), -1)
         
-        -- Check if near any stable to store
+        -- Find nearest stable to store (Global Search)
         local pCoords = GetEntityCoords(SpawnplayerHorse)
-        local stored = false
+        local closestStable = nil
+        local closestDist = 999999.0
+        
         for location, data in pairs(Config.Stables) do
             local dist = #(pCoords - data.Pos)
-            if dist < 50.0 then
-                local horseId = DecorGetInt(SpawnplayerHorse, "horseId")
-                if horseId and horseId ~= 0 then
-                    TriggerServerEvent('rsg-stable:server:StoreHorse', horseId, location)
-                    TriggerEvent('RSGCore:Notify', 'Horse stored in ' .. data.Name, 'success')
-                    stored = true
-                end
-                break
+            if dist < closestDist then
+                closestDist = dist
+                closestStable = location
             end
         end
         
-        if not stored then
-            TriggerEvent('RSGCore:Notify', 'Horse has returned to the stable', 'primary')
+        if closestStable then
+            local horseId = DecorGetInt(SpawnplayerHorse, "horseId")
+            if horseId and horseId ~= 0 then
+                TriggerServerEvent('rsg-stable:server:StoreHorse', horseId, closestStable)
+                local stableName = Config.Stables[closestStable].Name or "Stable"
+                TriggerEvent('RSGCore:Notify', 'Horse returned to ' .. stableName, 'success')
+            end
+        else
+            TriggerEvent('RSGCore:Notify', 'Horse has fled into the wild.', 'primary')
         end
         
         Wait(5000)
@@ -1778,6 +1794,69 @@ CreateThread(function()
 end)
 
 -- Whistle Command & Key Mapping (H)
+RegisterCommand('whistle', function()
+    local ped = PlayerPedId()
+        
+    -- Play Whistle Animation/Sound
+    -- Not sure of exact native for whistle sound, but there's an animation
+    -- TaskCallout checks for whistle logic usually?
+    -- Simple whistle sound logic
+    local whistleSound = "WHISTLE_HORSE_SHORT"  -- Generic placeholder sound event name?
+    -- Actually RedM has specific whistle natives
+    -- 0xD952D706853C3C01 - _PLAY_SOUND_FROM_ENTITY
+    
+    -- Let's just play a whistle animation for immersion if on foot
+    if not IsPedOnMount(ped) then
+        RequestAnimDict("rcm_native_sounds")
+        -- or generic whistle task
+    end
+    
+    -- Local Whistle Logic
+    -- Check if horse exists
+    if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
+        -- Horse exists, call it to player
+        local horse = SpawnplayerHorse
+        local pCoords = GetEntityCoords(ped)
+        
+        -- Task: Come to player
+        ClearPedTasks(horse)
+        TaskGoToEntity(horse, ped, -1, 5.0, 2.0, 0, 0)
+        
+        TriggerEvent('ox_lib:notify', {type = 'inform', description = 'You whistled for your horse.', duration = 3000})
+    else
+        -- Horse doesn't exist, request spawn from server (Flee/Despawned logic)
+        TriggerServerEvent('rsg-stable:server:WhistleCall')
+    end
+end)
+
+-- Key Mapping
+-- Key Mapping (Loop implementation as fallback)
+-- Key Mapping Loop Removed (Handled by main thread at line 883)
+
+RegisterNetEvent('rsg-stable:client:SpawnHorseFromWhistle', function()
+    -- Server sent info, now spawn it
+    -- We assume SetHorseInfo has run just before this event
+    local ped = PlayerPedId()
+    local pCoords = GetEntityCoords(ped)
+    
+    -- Calculate spawn position behind player (so it runs up to them)
+    local forward = GetEntityForwardVector(ped)
+    local spawnPos = pCoords - (forward * 10.0) -- 10 meters behind
+    
+    -- Ensure spawn pos is on ground (roughly)
+    local x, y, z = table.unpack(spawnPos)
+    local found, groundZ = GetGroundZFor_3dCoord(x, y, z, false)
+    if found then z = groundZ end
+    
+    InitiateHorse(vector3(x, y, z))
+    
+    -- After spawning, make it run to player
+    Wait(1000)
+    if SpawnplayerHorse ~= 0 and DoesEntityExist(SpawnplayerHorse) then
+        TaskGoToEntity(SpawnplayerHorse, ped, -1, 5.0, 5.0, 0, 0)
+        TriggerEvent('ox_lib:notify', {type = 'success', description = 'Your horse is coming!', duration = 5000})
+    end
+end)
 
 
 -- Legacy duplicate loop removed
